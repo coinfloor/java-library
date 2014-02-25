@@ -13,6 +13,12 @@ import java.util.Map;
 
 class JSON {
 
+	/**
+	 * Not instantiable.
+	 */
+	private JSON() {
+	}
+
 	public static void format(Writer writer, Object value) throws IOException {
 		if (value == null) {
 			writer.write("null");

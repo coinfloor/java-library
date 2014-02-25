@@ -3,6 +3,7 @@ package uk.co.coinfloor.api;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PushbackReader;
@@ -10,11 +11,12 @@ import java.math.BigInteger;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.bouncycastle.crypto.digests.SHA224Digest;
@@ -96,6 +98,150 @@ public class Coinfloor {
 
 		long last = -1, bid = -1, ask = -1, low = -1, high = -1, volume = -1;
 
+		Ticker() {
+		}
+
+	}
+
+	private static class RequestRecord<V> {
+
+		final ResponseInterpreter<V> responseInterpreter;
+		final AsyncResult<V> asyncResult;
+
+		RequestRecord(ResponseInterpreter<V> responseInterpreter, AsyncResult<V> asyncResult) {
+			this.responseInterpreter = responseInterpreter;
+			this.asyncResult = asyncResult;
+		}
+
+	}
+
+	private interface ResponseInterpreter<V> {
+
+		V interpret(Map<?, ?> response);
+
+	}
+
+	@SuppressWarnings("rawtypes")
+	private static class NullInterpreter implements ResponseInterpreter {
+
+		static final NullInterpreter instance = new NullInterpreter();
+
+		@Override
+		public Object interpret(Map response) {
+			return null;
+		}
+
+		@SuppressWarnings("unchecked")
+		static final <V> ResponseInterpreter<V> instance() {
+			return instance;
+		}
+
+	}
+
+	private static class BalancesInterpreter implements ResponseInterpreter<Map<Integer, Long>> {
+
+		static final BalancesInterpreter instance = new BalancesInterpreter();
+
+		@Override
+		public Map<Integer, Long> interpret(Map<?, ?> response) {
+			List<?> balances = (List<?>) response.get("balances");
+			HashMap<Integer, Long> ret = new HashMap<Integer, Long>((balances.size() + 2) / 3 * 4);
+			for (Object balanceObj : balances) {
+				Map<?, ?> balance = (Map<?, ?>) balanceObj;
+				ret.put(((Number) balance.get("asset")).intValue(), ((Number) balance.get("balance")).longValue());
+			}
+			return ret;
+		}
+
+	}
+
+	private static class OrdersInterpreter implements ResponseInterpreter<Map<Long, OrderInfo>> {
+
+		static final OrdersInterpreter dumbInstance = new OrdersInterpreter(-1, -1);
+
+		final int defaultBase, defaultCounter;
+
+		OrdersInterpreter(int defaultBase, int defaultCounter) {
+			this.defaultBase = defaultBase;
+			this.defaultCounter = defaultCounter;
+		}
+
+		@Override
+		public Map<Long, OrderInfo> interpret(Map<?, ?> response) {
+			List<?> orders = (List<?>) response.get("orders");
+			HashMap<Long, OrderInfo> ret = new HashMap<Long, OrderInfo>((orders.size() + 2) / 3 * 4);
+			for (Object orderObj : orders) {
+				Map<?, ?> order = (Map<?, ?>) orderObj;
+				Object baseObj = order.get("base"), counterObj = order.get("counter");
+				ret.put((Long) order.get("id"), new OrderInfo(baseObj == null ? defaultBase : ((Number) baseObj).intValue(), counterObj == null ? defaultCounter : ((Number) counterObj).intValue(), ((Number) order.get("quantity")).longValue(), ((Number) order.get("price")).longValue(), ((Number) order.get("time")).longValue()));
+			}
+			return ret;
+		}
+
+	}
+
+	private static class MarketOrderEstimateInterpreter implements ResponseInterpreter<MarketOrderEstimate> {
+
+		final int defaultBase, defaultCounter;
+
+		MarketOrderEstimateInterpreter(int defaultBase, int defaultCounter) {
+			this.defaultBase = defaultBase;
+			this.defaultCounter = defaultCounter;
+		}
+
+		@Override
+		public MarketOrderEstimate interpret(Map<?, ?> response) {
+			Object baseObj = response.get("base"), counterObj = response.get("counter");
+			return new MarketOrderEstimate(baseObj == null ? defaultBase : ((Number) baseObj).intValue(), counterObj == null ? defaultCounter : ((Number) counterObj).intValue(), ((Number) response.get("quantity")).longValue(), ((Number) response.get("total")).longValue());
+		}
+
+	}
+
+	private static class LongInterpreter implements ResponseInterpreter<Long> {
+
+		static final LongInterpreter idInstance = new LongInterpreter("id");
+		static final LongInterpreter remainingInstance = new LongInterpreter("remaining");
+		static final LongInterpreter volumeInstance = new LongInterpreter("volume");
+
+		final String fieldName;
+
+		LongInterpreter(String fieldName) {
+			this.fieldName = fieldName;
+		}
+
+		@Override
+		public Long interpret(Map<?, ?> response) {
+			return (Long) response.get(fieldName);
+		}
+
+	}
+
+	private static class OrderInfoInterpreter implements ResponseInterpreter<OrderInfo> {
+
+		static final OrderInfoInterpreter instance = new OrderInfoInterpreter();
+
+		@Override
+		public OrderInfo interpret(Map<?, ?> response) {
+			Object timeObj = response.get("time");
+			return new OrderInfo(((Number) response.get("base")).intValue(), ((Number) response.get("counter")).intValue(), ((Number) response.get("quantity")).longValue(), ((Number) response.get("price")).longValue(), timeObj == null ? -1 : ((Number) timeObj).longValue());
+		}
+
+	}
+
+	private class TickerInfoInterpreter implements ResponseInterpreter<TickerInfo> {
+
+		final int defaultBase, defaultCounter;
+
+		TickerInfoInterpreter(int defaultBase, int defaultCounter) {
+			this.defaultBase = defaultBase;
+			this.defaultCounter = defaultCounter;
+		}
+
+		@Override
+		public TickerInfo interpret(Map<?, ?> response) {
+			return makeTickerInfo(defaultBase, defaultCounter, response);
+		}
+
 	}
 
 	public static final URI defaultURI = URI.create("wss://api.coinfloor.co.uk/");
@@ -106,10 +252,12 @@ public class Coinfloor {
 	private static final Charset ascii = Charset.forName("US-ASCII"), utf8 = Charset.forName("UTF-8");
 
 	private final Random random = new Random();
+	private final HashMap<Integer, RequestRecord<?>> requests = new HashMap<Integer, RequestRecord<?>>();
 	private final HashMap<Integer, Ticker> tickers = new HashMap<Integer, Ticker>();
 
 	private WebSocket websocket;
 	private byte[] serverNonce;
+	private int tagCounter;
 	private long lastActivityTime;
 
 	static {
@@ -134,36 +282,21 @@ public class Coinfloor {
 		}
 		websocket = new WebSocket(uri);
 		lastActivityTime = System.nanoTime();
-		new Thread("Coinfloor WebSocket Keep-alive") {
-
-			{
-				setDaemon(true);
-			}
+		Map<?, ?> welcome = (Map<?, ?>) JSON.parse(new PushbackReader(new InputStreamReader(websocket.getInputStream(), ascii)));
+		serverNonce = Base64.decode((String) welcome.get("nonce"));
+		new Thread(getClass().getSimpleName() + " Pump") {
 
 			@Override
 			public void run() {
-				synchronized (Coinfloor.this) {
-					try {
-						while (websocket != null) {
-							long delay = lastActivityTime + KEEPALIVE_INTERVAL_NS - System.nanoTime();
-							if (delay > 0) {
-								TimeUnit.NANOSECONDS.timedWait(Coinfloor.this, delay);
-							}
-							else {
-								websocket.getOutputStream(0, WebSocket.OP_PING, true).close();
-								lastActivityTime = System.nanoTime();
-							}
-						}
-					}
-					catch (Exception e) {
-						return;
-					}
+				try {
+					pump();
+				}
+				catch (IOException e) {
+					disconnect();
 				}
 			}
 
 		}.start();
-		Map<?, ?> welcome = (Map<?, ?>) JSON.parse(new PushbackReader(new InputStreamReader(websocket.getInputStream(), ascii)));
-		serverNonce = Base64.decode((String) welcome.get("nonce"));
 	}
 
 	/**
@@ -182,6 +315,10 @@ public class Coinfloor {
 	 * and passphrase.
 	 */
 	public final void authenticate(long userID, String cookie, String passphrase) throws IOException, CoinfloorException {
+		getResult(authenticateAsync(userID, cookie, passphrase));
+	}
+
+	public final Future<Void> authenticateAsync(long userID, String cookie, String passphrase) throws IOException {
 		byte[] clientNonce = new byte[16];
 		random.nextBytes(clientNonce);
 		final SHA224Digest sha = new SHA224Digest();
@@ -208,42 +345,42 @@ public class Coinfloor {
 		dos.writeLong(userID);
 		dos.write(serverNonce);
 		dos.write(clientNonce);
-		dos.flush();
+		dos.close();
 		sha.doFinal(digest, 0);
 		BigInteger[] signature = signer.generateSignature(digest);
-		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
+		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "Authenticate");
 		request.put("user_id", userID);
 		request.put("cookie", cookie);
 		request.put("nonce", Base64.toBase64String(clientNonce));
 		request.put("signature", Arrays.asList(bigIntegerToBase64(signature[0]), bigIntegerToBase64(signature[1])));
-		doRequest(request);
+		return doRequest(request, NullInterpreter.<Void>instance());
 	}
 
 	/**
 	 * Retrieves all available balances of the authenticated user.
 	 */
 	public final Map<Integer, Long> getBalances() throws IOException, CoinfloorException {
-		List<?> balances = (List<?>) doRequest(Collections.singletonMap("method", "GetBalances")).get("balances");
-		HashMap<Integer, Long> ret = new HashMap<Integer, Long>((balances.size() + 2) / 3 * 4);
-		for (Object balanceObj : balances) {
-			Map<?, ?> balance = (Map<?, ?>) balanceObj;
-			ret.put(((Number) balance.get("asset")).intValue(), ((Number) balance.get("balance")).longValue());
-		}
-		return ret;
+		return getResult(getBalancesAsync());
+	}
+
+	public final Future<Map<Integer, Long>> getBalancesAsync() throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
+		request.put("method", "GetBalances");
+		return doRequest(request, BalancesInterpreter.instance);
 	}
 
 	/**
 	 * Retrieves all open orders of the authenticated user.
 	 */
 	public final Map<Long, OrderInfo> getOrders() throws IOException, CoinfloorException {
-		List<?> orders = (List<?>) doRequest(Collections.singletonMap("method", "GetOrders")).get("orders");
-		HashMap<Long, OrderInfo> ret = new HashMap<Long, OrderInfo>((orders.size() + 2) / 3 * 4);
-		for (Object orderObj : orders) {
-			Map<?, ?> order = (Map<?, ?>) orderObj;
-			ret.put(((Number) order.get("id")).longValue(), new OrderInfo(((Number) order.get("base")).intValue(), ((Number) order.get("counter")).intValue(), ((Number) order.get("quantity")).longValue(), ((Number) order.get("price")).longValue(), ((Number) order.get("time")).longValue()));
-		}
-		return ret;
+		return getResult(getOrdersAsync());
+	}
+
+	public final Future<Map<Long, OrderInfo>> getOrdersAsync() throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
+		request.put("method", "GetOrders");
+		return doRequest(request, OrdersInterpreter.dumbInstance);
 	}
 
 	/**
@@ -252,14 +389,17 @@ public class Coinfloor {
 	 * quantity should be positive for a buy order or negative for a sell
 	 * order.
 	 */
-	public final MarketOrderEstimate estimateBaseMarketOrder(int base, int counter, long quantity) throws IOException, CoinfloorException{
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+	public final MarketOrderEstimate estimateBaseMarketOrder(int base, int counter, long quantity) throws IOException, CoinfloorException {
+		return getResult(estimateBaseMarketOrderAsync(base, counter, quantity));
+	}
+
+	public final Future<MarketOrderEstimate> estimateBaseMarketOrderAsync(int base, int counter, long quantity) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "EstimateMarketOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("quantity", quantity);
-		Map<?, ?> response = doRequest(request);
-		return new MarketOrderEstimate(base, counter, ((Number) response.get("quantity")).longValue(), ((Number) response.get("total")).longValue());
+		return doRequest(request, new MarketOrderEstimateInterpreter(base, counter));
 	}
 
 	/**
@@ -268,13 +408,16 @@ public class Coinfloor {
 	 * should be positive for a buy order or negative for a sell order.
 	 */
 	public final MarketOrderEstimate estimateCounterMarketOrder(int base, int counter, long total) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+		return getResult(estimateCounterMarketOrderAsync(base, counter, total));
+	}
+
+	public final Future<MarketOrderEstimate> estimateCounterMarketOrderAsync(int base, int counter, long total) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "EstimateMarketOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("total", total);
-		Map<?, ?> response = doRequest(request);
-		return new MarketOrderEstimate(base, counter, ((Number) response.get("quantity")).longValue(), ((Number) response.get("total")).longValue());
+		return doRequest(request, new MarketOrderEstimateInterpreter(base, counter));
 	}
 
 	/**
@@ -284,13 +427,17 @@ public class Coinfloor {
 	 * be pre-multiplied by 10000.
 	 */
 	public final long placeLimitOrder(int base, int counter, long quantity, long price) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
+		return getResult(placeLimitOrderAsync(base, counter, quantity, price));
+	}
+
+	public final Future<Long> placeLimitOrderAsync(int base, int counter, long quantity, long price) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("quantity", quantity);
 		request.put("price", price);
-		return ((Number) doRequest(request).get("id")).longValue();
+		return doRequest(request, LongInterpreter.idInstance);
 	}
 
 	/**
@@ -299,12 +446,16 @@ public class Coinfloor {
 	 * negative for a sell order.
 	 */
 	public final long executeBaseMarketOrder(int base, int counter, long quantity) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+		return getResult(executeBaseMarketOrderAsync(base, counter, quantity));
+	}
+
+	public final Future<Long> executeBaseMarketOrderAsync(int base, int counter, long quantity) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("quantity", quantity);
-		return ((Number) doRequest(request).get("remaining")).longValue();
+		return doRequest(request, LongInterpreter.remainingInstance);
 	}
 
 	/**
@@ -313,23 +464,30 @@ public class Coinfloor {
 	 * negative for a sell order.
 	 */
 	public final long executeCounterMarketOrder(int base, int counter, long total) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+		return getResult(executeCounterMarketOrderAsync(base, counter, total));
+	}
+
+	public final Future<Long> executeCounterMarketOrderAsync(int base, int counter, long total) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("total", total);
-		return ((Number) doRequest(request).get("remaining")).longValue();
+		return doRequest(request, LongInterpreter.remainingInstance);
 	}
 
 	/**
 	 * Cancels the specified open order.
 	 */
 	public final OrderInfo cancelOrder(long id) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
+		return getResult(cancelOrderAsync(id));
+	}
+
+	public final Future<OrderInfo> cancelOrderAsync(long id) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((3 + 2) / 3 * 4);
 		request.put("method", "CancelOrder");
 		request.put("id", id);
-		Map<?, ?> response = doRequest(request);
-		return new OrderInfo(((Number) response.get("base")).intValue(), ((Number) response.get("counter")).intValue(), ((Number) response.get("quantity")).longValue(), ((Number) response.get("price")).longValue(), -1);
+		return doRequest(request, OrderInfoInterpreter.instance);
 	}
 
 	/**
@@ -337,10 +495,14 @@ public class Coinfloor {
 	 * in the specified asset.
 	 */
 	public final long getTradeVolume(int asset) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
+		return getResult(getTradeVolumeAsync(asset));
+	}
+
+	public final Future<Long> getTradeVolumeAsync(int asset) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((3 + 2) / 3 * 4);
 		request.put("method", "GetTradeVolume");
 		request.put("asset", asset);
-		return ((Number) doRequest(request).get("volume")).longValue();
+		return doRequest(request, LongInterpreter.volumeInstance);
 	}
 
 	/**
@@ -348,21 +510,17 @@ public class Coinfloor {
 	 * order book. Subscribing to feeds does not require authentication.
 	 */
 	public final Map<Long, OrderInfo> watchOrders(int base, int counter, boolean watch) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+		Map<Long, OrderInfo> result = getResult(watchOrdersAsync(base, counter, watch));
+		return watch ? result : null;
+	}
+
+	public final Future<Map<Long, OrderInfo>> watchOrdersAsync(int base, int counter, boolean watch) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "WatchOrders");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("watch", watch);
-		List<?> orders = (List<?>) doRequest(request).get("orders");
-		if (!watch) {
-			return null;
-		}
-		HashMap<Long, OrderInfo> ret = new HashMap<Long, OrderInfo>((orders.size() + 2) / 3 * 4);
-		for (Object orderObj : orders) {
-			Map<?, ?> order = (Map<?, ?>) orderObj;
-			ret.put(((Number) order.get("id")).longValue(), new OrderInfo(base, counter, ((Number) order.get("quantity")).longValue(), ((Number) order.get("price")).longValue(), ((Number) order.get("time")).longValue()));
-		}
-		return ret;
+		return doRequest(request, watch ? new OrdersInterpreter(base, counter) : NullInterpreter.<Map<Long, OrderInfo>>instance());
 	}
 
 	/**
@@ -370,32 +528,17 @@ public class Coinfloor {
 	 * order book. Subscribing to feeds does not require authentication.
 	 */
 	public final TickerInfo watchTicker(int base, int counter, boolean watch) throws IOException, CoinfloorException {
-		HashMap<String, Object> request = new HashMap<String, Object>((4 + 2) / 3 * 4);
+		TickerInfo result = getResult(watchTickerAsync(base, counter, watch));
+		return watch ? result : null;
+	}
+
+	public final Future<TickerInfo> watchTickerAsync(int base, int counter, boolean watch) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "WatchTicker");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("watch", watch);
-		Map<?, ?> response = doRequest(request);
-		if (!watch) {
-			return null;
-		}
-		Ticker ticker = getTicker(base, counter);
-		Number last = (Number) response.get("last"), bid = (Number) response.get("bid"), ask = (Number) response.get("ask"), low = (Number) response.get("low"), high = (Number) response.get("high"), volume = (Number) response.get("volume");
-		return new TickerInfo(base, counter, ticker.last = last == null ? -1 : last.longValue(), ticker.bid = bid == null ? -1 : bid.longValue(), ticker.ask = ask == null ? -1 : ask.longValue(), ticker.low = low == null ? -1 : low.longValue(), ticker.high = high == null ? -1 : high.longValue(), ticker.volume = volume.longValue());
-	}
-
-	public final void pump() throws IOException {
-		if (websocket == null) {
-			throw new IllegalStateException("not connected");
-		}
-		try {
-			for (;;) {
-				getResponse();
-			}
-		}
-		catch (CoinfloorException e) {
-			throw new IOException(e);
-		}
+		return doRequest(request, watch ? new TickerInfoInterpreter(base, counter) : NullInterpreter.<TickerInfo>instance());
 	}
 
 	/**
@@ -440,31 +583,87 @@ public class Coinfloor {
 	protected void tickerChanged(int base, int counter, long last, long bid, long ask, long low, long high, long volume) {
 	}
 
-	private Map<?, ?> doRequest(Map<?, ?> request) throws IOException, CoinfloorException {
+	private synchronized <V> Future<V> doRequest(Map<String, Object> request, ResponseInterpreter<V> interpreter) throws IOException {
 		if (websocket == null) {
 			throw new IllegalStateException("not connected");
 		}
+		Integer tag = Integer.valueOf(++tagCounter == 0 ? ++tagCounter : tagCounter);
+		request.put("tag", tag);
 		OutputStreamWriter writer = new OutputStreamWriter(websocket.getOutputStream(0, WebSocket.OP_TEXT, true), utf8);
 		JSON.format(writer, request);
 		writer.close();
 		lastActivityTime = System.nanoTime();
-		return getResponse();
+		AsyncResult<V> asyncResult = new AsyncResult<V>();
+		RequestRecord<V> requestRecord = new RequestRecord<V>(interpreter, asyncResult);
+		synchronized (requests) {
+			requests.put(tag, requestRecord);
+		}
+		return asyncResult;
 	}
 
-	private Map<?, ?> getResponse() throws IOException, CoinfloorException {
+	private <V> V getResult(Future<V> future) throws IOException, CoinfloorException {
+		try {
+			return future.get();
+		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			InterruptedIOException iioe = new InterruptedIOException();
+			iioe.initCause(e);
+			throw iioe;
+		}
+		catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof CoinfloorException) {
+				CoinfloorException ce = (CoinfloorException) cause, ce1 = new CoinfloorException(ce.getErrorCode(), ce.getErrorMessage());
+				ce1.initCause(ce);
+				throw ce1;
+			}
+			throw new IOException(cause);
+		}
+	}
+
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	final void pump() throws IOException {
 		for (;;) {
-			WebSocket.MessageInputStream in = websocket.getInputStream();
+			WebSocket websocket;
+			int timeout;
+			synchronized (this) {
+				websocket = this.websocket;
+				timeout = (int) TimeUnit.NANOSECONDS.toMillis(lastActivityTime + KEEPALIVE_INTERVAL_NS - System.nanoTime());
+			}
+			if (websocket == null) {
+				break;
+			}
+			if (timeout <= 0) {
+				websocket.getOutputStream(0, WebSocket.OP_PING, true).close();
+				timeout = (int) TimeUnit.NANOSECONDS.toMillis(KEEPALIVE_INTERVAL_NS);
+			}
+			WebSocket.MessageInputStream in = websocket.getInputStream(timeout);
+			if (in == null) {
+				continue;
+			}
 			lastActivityTime = System.nanoTime();
 			switch (in.getOpcode()) {
 				case WebSocket.OP_TEXT: {
 					Map<?, ?> message = (Map<?, ?>) JSON.parse(new PushbackReader(new InputStreamReader(in, utf8)));
-					Object errorCodeObj = message.get("error_code");
-					if (errorCodeObj != null) {
-						int errorCode = ((Number) message.get("error_code")).intValue();
-						if (errorCode == 0) {
-							return message;
+					Object tagObj = message.get("tag");
+					if (tagObj != null) {
+						RequestRecord<?> requestRecord;
+						synchronized (requests) {
+							requestRecord = requests.remove(((Number) tagObj).intValue());
 						}
-						throw new CoinfloorException(errorCode, (String) message.get("error_msg"));
+						if (requestRecord != null) {
+							Object errorCodeObj = message.get("error_code");
+							if (errorCodeObj != null) {
+								int errorCode = ((Number) message.get("error_code")).intValue();
+								if (errorCode != 0) {
+									requestRecord.asyncResult.setException(new CoinfloorException(errorCode, (String) message.get("error_msg")));
+									continue;
+								}
+							}
+							((AsyncResult) requestRecord.asyncResult).setResult(requestRecord.responseInterpreter.interpret(message));
+						}
+						continue;
 					}
 					Object notice = message.get("notice");
 					if (notice != null) {
@@ -482,10 +681,8 @@ public class Coinfloor {
 							orderClosed(((Number) message.get("id")).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue());
 						}
 						else if ("TickerChanged".equals(notice)) {
-							int base = ((Number) message.get("base")).intValue(), counter = ((Number) message.get("counter")).intValue();
-							Ticker ticker = getTicker(base, counter);
-							Number last = (Number) message.get("last"), bid = (Number) message.get("bid"), ask = (Number) message.get("ask"), low = (Number) message.get("low"), high = (Number) message.get("high"), volume = (Number) message.get("volume");
-							tickerChanged(base, counter, last == null ? message.containsKey("last") ? (ticker.last = -1) : ticker.last : (ticker.last = last.longValue()), bid == null ? message.containsKey("bid") ? (ticker.bid = -1) : ticker.bid : (ticker.bid = bid.longValue()), ask == null ? message.containsKey("ask") ? (ticker.ask = -1) : ticker.ask : (ticker.ask = ask.longValue()), low == null ? message.containsKey("low") ? (ticker.low = -1) : ticker.low : (ticker.low = low.longValue()), high == null ? message.containsKey("high") ? (ticker.high = -1) : ticker.high : (ticker.high = high.longValue()), volume == null ? ticker.volume : (ticker.volume = volume.longValue()));
+							TickerInfo tickerInfo = makeTickerInfo(-1, -1, message);
+							tickerChanged(tickerInfo.base, tickerInfo.counter, tickerInfo.last, tickerInfo.bid, tickerInfo.ask, tickerInfo.low, tickerInfo.high, tickerInfo.volume);
 						}
 					}
 					break;
@@ -503,13 +700,16 @@ public class Coinfloor {
 		}
 	}
 
-	private Ticker getTicker(int base, int counter) {
+	final TickerInfo makeTickerInfo(int defaultBase, int defaultCounter, Map<?, ?> response) {
+		Object baseObj = response.get("base"), counterObj = response.get("counter"), lastObj = response.get("last"), bidObj = response.get("bid"), askObj = response.get("ask"), lowObj = response.get("low"), highObj = response.get("high"), volumeObj = response.get("volume");
+		int base = baseObj == null ? defaultBase : ((Number) baseObj).intValue(), counter = counterObj == null ? defaultCounter : ((Number) counterObj).intValue();
+		boolean lastPresent = lastObj != null || response.containsKey("last"), bidPresent = bidObj != null || response.containsKey("bid"), askPresent = askObj != null || response.containsKey("ask"), lowPresent = lowObj != null || response.containsKey("low"), highPresent = highObj != null || response.containsKey("high"), volumePresent = volumeObj != null || response.containsKey("volume");
 		synchronized (tickers) {
 			Ticker ticker;
 			if ((ticker = tickers.get(base << 16 | counter)) == null) {
 				tickers.put(base << 16 | counter, ticker = new Ticker());
 			}
-			return ticker;
+			return new TickerInfo(base, counter, lastPresent ? (ticker.last = lastObj == null ? -1 : ((Number) lastObj).longValue()) : ticker.last, bidPresent ? (ticker.bid = bidObj == null ? -1 : ((Number) bidObj).longValue()) : ticker.bid, askPresent ? (ticker.ask = askObj == null ? -1 : ((Number) askObj).longValue()) : ticker.ask, lowPresent ? (ticker.low = lowObj == null ? -1 : ((Number) lowObj).longValue()) : ticker.low, highPresent ? (ticker.high = highObj == null ? -1 : ((Number) highObj).longValue()) : ticker.high, volumePresent ? (ticker.volume = volumeObj == null ? -1 : ((Number) volumeObj).longValue()) : ticker.volume);
 		}
 	}
 

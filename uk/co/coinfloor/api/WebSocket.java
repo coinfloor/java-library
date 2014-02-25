@@ -13,6 +13,7 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.net.ProtocolException;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
@@ -39,21 +40,26 @@ class WebSocket {
 			super(in);
 			DataInputStream dis = new DataInputStream(in);
 			flagsAndOpcode = dis.readUnsignedByte();
-			long length = dis.readUnsignedByte();
-			boolean mask = (length & 1 << 7) != 0;
-			length &= (1 << 7) - 1;
-			if (length == 126) {
-				length = dis.readUnsignedShort();
+			try {
+				long length = dis.readUnsignedByte();
+				boolean mask = (length & 1 << 7) != 0;
+				length &= (1 << 7) - 1;
+				if (length == 126) {
+					length = dis.readUnsignedShort();
+				}
+				else if (length == 127 && (length = dis.readLong()) < 0) {
+					throw new ProtocolException("frame payload length is too large");
+				}
+				this.length = length;
+				if (mask) {
+					dis.readFully(maskingKey = new byte[4]);
+				}
+				else {
+					maskingKey = null;
+				}
 			}
-			else if (length == 127 && (length = dis.readLong()) < 0) {
-				throw new ProtocolException("frame payload length is too large");
-			}
-			this.length = length;
-			if (mask) {
-				dis.readFully(maskingKey = new byte[4]);
-			}
-			else {
-				maskingKey = null;
+			catch (SocketTimeoutException e) {
+				throw new IOException(e);
 			}
 		}
 
@@ -351,7 +357,12 @@ class WebSocket {
 		try {
 			OutputStreamWriter writer = new OutputStreamWriter(out = new BufferedOutputStream(socket.getOutputStream()), "US-ASCII");
 			writer.write("GET ");
-			writer.write(uri.getPath());
+			writer.write(uri.getRawPath());
+			String query = uri.getRawQuery();
+			if (query != null) {
+				writer.write('?');
+				writer.write(query);
+			}
 			writer.write(" HTTP/1.1\r\nHost: ");
 			writer.write(uri.getHost());
 			writer.write("\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ");
@@ -420,6 +431,19 @@ class WebSocket {
 
 	public MessageInputStream getInputStream() throws IOException {
 		return new MessageInputStream(in);
+	}
+
+	public MessageInputStream getInputStream(int timeout) throws IOException {
+		socket.setSoTimeout(timeout);
+		try {
+			return new MessageInputStream(in);
+		}
+		catch (SocketTimeoutException e) {
+			return null;
+		}
+		finally {
+			socket.setSoTimeout(0);
+		}
 	}
 
 	public MessageOutputStream getOutputStream(int flags, int opcode, boolean mask) {
