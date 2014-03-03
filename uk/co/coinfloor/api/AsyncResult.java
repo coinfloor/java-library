@@ -5,7 +5,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-class AsyncResult<V> implements Future<V> {
+class AsyncResult<V> implements Future<V>, Callback<V> {
 
 	private int state;
 	private Object result;
@@ -57,13 +57,15 @@ class AsyncResult<V> implements Future<V> {
 		return (V) result;
 	}
 
-	protected synchronized void setResult(V result) {
+	@Override
+	public synchronized void operationCompleted(V result) {
 		state = 1;
 		this.result = result;
 		notifyAll();
 	}
 
-	protected synchronized void setException(Throwable exception) {
+	@Override
+	public synchronized void operationFailed(Exception exception) {
 		state = -1;
 		result = exception;
 		notifyAll();

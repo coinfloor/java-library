@@ -5,6 +5,18 @@ java-library
 
 Coinfloor's application programming interface (API) provides our clients programmatic access to control aspects of their accounts and to place orders on the Coinfloor trading platform. The Java client library exposes the Coinfloor API to your Java application.
 
+### Invocation models
+
+The library presents three invocation models for each API method:
+
+* **Synchronous.** The method call returns the result of the method (or throws an exception). This is the easiest model to use, but it can result in poor performance, as it does not allow for pipelining of requests.
+
+* **Asynchronous (Polled).** The method call returns a `java.util.concurrent.Future` object that can be polled or waited upon for the result of the method. This model is moderately easy to use and allows for pipelining of requests. See [Example.java][] for an example of using this invocation model.
+
+* **Asynchronous (Callback).** The method call accepts a `Callback` object that will be notified when the result of the method is available. The callback must complete its work quickly (without blocking or waiting). This model is the most difficult to use but offers the most flexibility.
+
+[Example.java]: https://github.com/coinfloor/java-library/blob/master/uk/co/coinfloor/api/Example.java
+
 ### Third-party library dependencies
 
 * [Legion of the Bouncy Castle Java cryptography APIs] (http://www.bouncycastle.org/java.html)
