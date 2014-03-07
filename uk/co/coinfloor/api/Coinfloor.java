@@ -295,9 +295,11 @@ public class Coinfloor {
 			public void run() {
 				try {
 					pump();
+					disconnected(null);
 				}
 				catch (IOException e) {
 					disconnect();
+					disconnected(e);
 				}
 			}
 
@@ -658,6 +660,13 @@ public class Coinfloor {
 	 * ticker feed of an order book.
 	 */
 	protected void tickerChanged(int base, int counter, long last, long bid, long ask, long low, long high, long volume) {
+	}
+
+	/**
+	 * A user-supplied callback that is invoked if the connection to the server
+	 * is terminated, either by {@link #disconnect()} or spuriously.
+	 */
+	protected void disconnected(IOException e) {
 	}
 
 	private synchronized void doRequest(Map<String, Object> request, Callback<? super Map<?, ?>> callback) throws IOException {
