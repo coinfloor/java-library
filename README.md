@@ -29,7 +29,11 @@ Are you interested in getting rewarded for testing out our trade engine? Sign up
 
 ## API
 
-For an explanation of the API calls and what they return, please see https://github.com/coinfloor/api.
+For an explanation of our API methods and what they return, please see our [API specification](https://github.com/coinfloor/API).
+
+### Numbers and scale
+
+All quantities and prices are transmitted and received as integers with implicit scale factors. For scale information, please see [SCALE.md](https://github.com/coinfloor/API/blob/master/SCALE.md).
 
 
 ## Licence
@@ -47,3 +51,8 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+
+## Give us your feedback!
+
+We're always looking to get as much feedback as we can. We want to hear your opinion. [Contact us](http://support.coinfloor.co.uk/).
