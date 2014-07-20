@@ -295,10 +295,12 @@ public class Coinfloor {
 			public void run() {
 				try {
 					pump();
+					failRequests(null);
 					disconnected(null);
 				}
 				catch (IOException e) {
 					disconnect();
+					failRequests(e);
 					disconnected(e);
 				}
 			}
@@ -778,6 +780,20 @@ public class Coinfloor {
 					lastActivityTime = System.nanoTime();
 					break;
 				}
+			}
+		}
+	}
+
+	final void failRequests(Exception exception) {
+		synchronized (requests) {
+			if (!requests.isEmpty()) {
+				if (exception == null) {
+					exception = new IOException("disconnected");
+				}
+				for (Callback<?> callback : requests.values()) {
+					callback.operationFailed(exception);
+				}
+				requests.clear();
 			}
 		}
 	}
