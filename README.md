@@ -22,11 +22,6 @@ The library presents three invocation models for each API method:
 * [Legion of the Bouncy Castle Java cryptography APIs] (http://www.bouncycastle.org/java.html)
 
 
-## Sign up to our beta
-
-Are you interested in getting rewarded for testing out our trade engine? Sign up to our [private beta](http://eepurl.com/MeuYr).
-
-
 ## API
 
 For an explanation of our API methods and what they return, please see our [API specification](https://github.com/coinfloor/API).
