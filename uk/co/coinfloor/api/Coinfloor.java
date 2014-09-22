@@ -368,7 +368,7 @@ public class Coinfloor {
 		request.put("user_id", userID);
 		request.put("cookie", cookie);
 		request.put("nonce", Base64.toBase64String(clientNonce));
-		request.put("signature", Arrays.asList(bigIntegerToBase64(signature[0]), bigIntegerToBase64(signature[1])));
+		request.put("signature", Arrays.asList(bigIntegerToBase64(signature[0], 28), bigIntegerToBase64(signature[1], 28)));
 		doRequest(request, new NullInterpreter<Void>(callback));
 	}
 
@@ -811,9 +811,22 @@ public class Coinfloor {
 		}
 	}
 
-	private static String bigIntegerToBase64(BigInteger bi) {
+	private static String bigIntegerToBase64(BigInteger bi, int length) {
 		byte[] bytes = bi.toByteArray();
-		return bytes[0] == 0 ? Base64.toBase64String(bytes, 1, bytes.length - 1) : Base64.toBase64String(bytes);
+		int over = bytes.length - length;
+		if (over > 0) {
+			for (int i = over; i > 0;) {
+				if (bytes[--i] != 0) {
+					throw new IllegalArgumentException("integer is too large");
+				}
+			}
+			return Base64.toBase64String(bytes, over, length);
+		}
+		if (over < 0) {
+			byte[] src = bytes;
+			System.arraycopy(src, 0, bytes = new byte[length], -over, src.length);
+		}
+		return Base64.toBase64String(bytes);
 	}
 
 }
