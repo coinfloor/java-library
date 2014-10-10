@@ -462,75 +462,134 @@ public class Coinfloor {
 	/**
 	 * Places a limit order to trade the specified quantity (in units of the
 	 * base asset) at the specified price or better. The quantity should be
-	 * positive for a buy order or negative for a sell order. The price should
-	 * be pre-multiplied by 10000.
+	 * positive for a buy order or negative for a sell order. The tonce is
+	 * optional and may be omitted by specifying 0 or a negative number.
 	 */
-	public final long placeLimitOrder(int base, int counter, long quantity, long price) throws IOException, CoinfloorException {
-		return getResult(placeLimitOrderAsync(base, counter, quantity, price));
+	public final long placeLimitOrder(int base, int counter, long quantity, long price, long tonce, boolean persist) throws IOException, CoinfloorException {
+		return getResult(placeLimitOrderAsync(base, counter, quantity, price, tonce, persist));
 	}
 
-	public final Future<Long> placeLimitOrderAsync(int base, int counter, long quantity, long price) throws IOException {
+	public final Future<Long> placeLimitOrderAsync(int base, int counter, long quantity, long price, long tonce, boolean persist) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
-		placeLimitOrderAsync(base, counter, quantity, price, asyncResult);
+		placeLimitOrderAsync(base, counter, quantity, price, tonce, persist, asyncResult);
 		return asyncResult;
 	}
 
-	public final void placeLimitOrderAsync(int base, int counter, long quantity, long price, Callback<? super Long> callback) throws IOException {
-		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
+	public final void placeLimitOrderAsync(int base, int counter, long quantity, long price, long tonce, boolean persist, Callback<? super Long> callback) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((8 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("quantity", quantity);
 		request.put("price", price);
+		if (tonce > 0) {
+			request.put("tonce", tonce);
+		}
+		if (!persist) {
+			request.put("persist", persist);
+		}
 		doRequest(request, new LongInterpreter(callback, "id"));
+	}
+
+	@Deprecated
+	public final long placeLimitOrder(int base, int counter, long quantity, long price) throws IOException, CoinfloorException {
+		return placeLimitOrder(base, counter, quantity, price, 0, true);
+	}
+
+	@Deprecated
+	public final Future<Long> placeLimitOrderAsync(int base, int counter, long quantity, long price) throws IOException {
+		return placeLimitOrderAsync(base, counter, quantity, price, 0, true);
+	}
+
+	@Deprecated
+	public final void placeLimitOrderAsync(int base, int counter, long quantity, long price, Callback<? super Long> callback) throws IOException {
+		placeLimitOrderAsync(base, counter, quantity, price, 0, true, callback);
 	}
 
 	/**
 	 * Executes a market order to trade up to the specified quantity (in units
 	 * of the base asset). The quantity should be positive for a buy order or
-	 * negative for a sell order.
+	 * negative for a sell order. The tonce is optional and may be omitted by
+	 * specifying 0 or a negative number.
 	 */
-	public final long executeBaseMarketOrder(int base, int counter, long quantity) throws IOException, CoinfloorException {
-		return getResult(executeBaseMarketOrderAsync(base, counter, quantity));
+	public final long executeBaseMarketOrder(int base, int counter, long quantity, long tonce) throws IOException, CoinfloorException {
+		return getResult(executeBaseMarketOrderAsync(base, counter, quantity, tonce));
 	}
 
-	public final Future<Long> executeBaseMarketOrderAsync(int base, int counter, long quantity) throws IOException {
+	public final Future<Long> executeBaseMarketOrderAsync(int base, int counter, long quantity, long tonce) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
-		executeBaseMarketOrderAsync(base, counter, quantity, asyncResult);
+		executeBaseMarketOrderAsync(base, counter, quantity, tonce, asyncResult);
 		return asyncResult;
 	}
 
-	public final void executeBaseMarketOrderAsync(int base, int counter, long quantity, Callback<? super Long> callback) throws IOException {
-		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
+	public final void executeBaseMarketOrderAsync(int base, int counter, long quantity, long tonce, Callback<? super Long> callback) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("quantity", quantity);
+		if (tonce > 0) {
+			request.put("tonce", tonce);
+		}
 		doRequest(request, new LongInterpreter(callback, "remaining"));
+	}
+
+	@Deprecated
+	public final long executeBaseMarketOrder(int base, int counter, long quantity) throws IOException, CoinfloorException {
+		return executeBaseMarketOrder(base, counter, quantity, 0);
+	}
+
+	@Deprecated
+	public final Future<Long> executeBaseMarketOrderAsync(int base, int counter, long quantity) throws IOException {
+		return executeBaseMarketOrderAsync(base, counter, quantity, 0);
+	}
+
+	@Deprecated
+	public final void executeBaseMarketOrderAsync(int base, int counter, long quantity, Callback<? super Long> callback) throws IOException {
+		executeBaseMarketOrderAsync(base, counter, quantity, 0, callback);
 	}
 
 	/**
 	 * Executes a market order to trade up to the specified total (in units of
 	 * the counter asset). The total should be positive for a buy order or
-	 * negative for a sell order.
+	 * negative for a sell order. The tonce is optional and may be omitted by
+	 * specifying 0 or a negative number.
 	 */
-	public final long executeCounterMarketOrder(int base, int counter, long total) throws IOException, CoinfloorException {
-		return getResult(executeCounterMarketOrderAsync(base, counter, total));
+	public final long executeCounterMarketOrder(int base, int counter, long total, long tonce) throws IOException, CoinfloorException {
+		return getResult(executeCounterMarketOrderAsync(base, counter, total, tonce));
 	}
 
-	public final Future<Long> executeCounterMarketOrderAsync(int base, int counter, long total) throws IOException {
+	public final Future<Long> executeCounterMarketOrderAsync(int base, int counter, long total, long tonce) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
-		executeCounterMarketOrderAsync(base, counter, total, asyncResult);
+		executeCounterMarketOrderAsync(base, counter, total, tonce, asyncResult);
 		return asyncResult;
 	}
 
-	public final void executeCounterMarketOrderAsync(int base, int counter, long total, Callback<? super Long> callback) throws IOException {
-		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
+	public final void executeCounterMarketOrderAsync(int base, int counter, long total, long tonce, Callback<? super Long> callback) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
 		request.put("base", base);
 		request.put("counter", counter);
 		request.put("total", total);
+		if (tonce > 0) {
+			request.put("tonce", tonce);
+		}
 		doRequest(request, new LongInterpreter(callback, "remaining"));
+	}
+
+	@Deprecated
+	public final long executeCounterMarketOrder(int base, int counter, long total) throws IOException, CoinfloorException {
+		return executeCounterMarketOrder(base, counter, total, 0);
+	}
+
+	@Deprecated
+	public final Future<Long> executeCounterMarketOrderAsync(int base, int counter, long total) throws IOException {
+		return executeCounterMarketOrderAsync(base, counter, total, 0);
+	}
+
+	@Deprecated
+	public final void executeCounterMarketOrderAsync(int base, int counter, long total, Callback<? super Long> callback) throws IOException {
+		executeCounterMarketOrderAsync(base, counter, total, 0, callback);
 	}
 
 	/**
