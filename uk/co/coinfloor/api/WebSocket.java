@@ -2,6 +2,7 @@ package uk.co.coinfloor.api;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.FilterInputStream;
@@ -26,7 +27,7 @@ import javax.net.ssl.SSLSocketFactory;
 
 import org.bouncycastle.util.encoders.Base64;
 
-class WebSocket {
+class WebSocket implements Closeable {
 
 	public static class MessageInputStream extends FilterInputStream {
 
@@ -109,7 +110,11 @@ class WebSocket {
 
 		@Override
 		public void close() throws IOException {
-			// no-op
+			do {
+				while (length > 0) {
+					length -= in.skip(length);
+				}
+			} while (nextFrame());
 		}
 
 		private boolean nextFrame() throws IOException {
@@ -365,6 +370,10 @@ class WebSocket {
 			}
 			writer.write(" HTTP/1.1\r\nHost: ");
 			writer.write(uri.getHost());
+			if (port >= 0) {
+				writer.write(':');
+				writer.write(String.valueOf(port));
+			}
 			writer.write("\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ");
 			byte[] nonce = new byte[16];
 			secureRandom.nextBytes(nonce);
@@ -450,6 +459,7 @@ class WebSocket {
 		return new MessageOutputStream(out, flags, opcode, mask ? secureRandom : null);
 	}
 
+	@Override
 	public void close() {
 		// TODO send proper disconnection message
 		try {
