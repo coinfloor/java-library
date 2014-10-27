@@ -41,7 +41,7 @@ class AsyncResult<V> implements Future<V>, Callback<V> {
 	@SuppressWarnings("unchecked")
 	public synchronized V get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
 		if (state == 0) {
-			for (long deadline = System.nanoTime() + unit.toNanos(timeout);;) {
+			for (long deadline = System.nanoTime() + (timeout = unit.toNanos(timeout));;) {
 				TimeUnit.NANOSECONDS.timedWait(this, timeout);
 				if (state != 0) {
 					break;
