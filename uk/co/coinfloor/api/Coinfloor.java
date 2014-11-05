@@ -554,6 +554,25 @@ public class Coinfloor {
 	}
 
 	/**
+	 * Cancels all open orders belonging to the authenticated user.
+	 */
+	public final Map<Long, OrderInfo> cancelAllOrders() throws IOException, CoinfloorException {
+		return getResult(cancelAllOrdersAsync());
+	}
+
+	public final Future<Map<Long, OrderInfo>> cancelAllOrdersAsync() throws IOException {
+		AsyncResult<Map<Long, OrderInfo>> asyncResult = new AsyncResult<Map<Long, OrderInfo>>();
+		cancelAllOrdersAsync(asyncResult);
+		return asyncResult;
+	}
+
+	public final void cancelAllOrdersAsync(Callback<? super Map<Long, OrderInfo>> callback) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
+		request.put("method", "CancelAllOrders");
+		doRequest(request, new OrdersInterpreter(callback, -1, -1));
+	}
+
+	/**
 	 * Retrieves the trailing 30-day trading volume of the authenticated user
 	 * in the specified asset.
 	 */
