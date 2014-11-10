@@ -24,18 +24,18 @@ public class Example {
 			}
 
 			@Override
-			protected void orderOpened(long id, int base, int counter, long quantity, long price, long time) {
-				System.out.println("orderOpened(id: " + id + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ", time: " + time + ')');
+			protected void orderOpened(long id, long tonce, int base, int counter, long quantity, long price, long time, boolean own) {
+				System.out.println("orderOpened(id: " + id + ", tonce: " + tonce + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ", time: " + time + ", own: " + own + ')');
 			}
 
 			@Override
-			protected void ordersMatched(long bid, long ask, int base, int counter, long quantity, long price, long total, long bidRem, long askRem, long time, long bidBaseFee, long bidCounterFee, long askBaseFee, long askCounterFee) {
-				System.out.println("ordersMatched(bid: " + bid + ", ask: " + ask + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ", total: " + total + ", bidRem: " + bidRem + ", askRem: " + askRem + ", time: " + time + ", bidBaseFee: " + bidBaseFee + ", bidCounterFee: " + bidCounterFee + ", askBaseFee: " + askBaseFee + ", askCounterFee: " + askCounterFee + ')');
+			protected void ordersMatched(long bid, long bidTonce, long ask, long askTonce, int base, int counter, long quantity, long price, long total, long bidRem, long askRem, long time, long bidBaseFee, long bidCounterFee, long askBaseFee, long askCounterFee) {
+				System.out.println("ordersMatched(bid: " + bid + ", bidTonce: " + bidTonce + ", ask: " + ask + ", askTonce: " + askTonce + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ", total: " + total + ", bidRem: " + bidRem + ", askRem: " + askRem + ", time: " + time + ", bidBaseFee: " + bidBaseFee + ", bidCounterFee: " + bidCounterFee + ", askBaseFee: " + askBaseFee + ", askCounterFee: " + askCounterFee + ')');
 			}
 
 			@Override
-			protected void orderClosed(long id, int base, int counter, long quantity, long price) {
-				System.out.println("orderClosed(id: " + id + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ')');
+			protected void orderClosed(long id, long tonce, int base, int counter, long quantity, long price, boolean own) {
+				System.out.println("orderClosed(id: " + id + ", tonce: " + tonce + ", base: 0x" + Integer.toHexString(base) + ", counter: 0x" + Integer.toHexString(counter) + ", quantity: " + quantity + ", price: " + price + ", own: " + own + ')');
 			}
 
 			@Override
