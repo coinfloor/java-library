@@ -715,6 +715,11 @@ public class Coinfloor {
 	 * this callback unless the client is subscribed to the orders feed of an
 	 * order book.
 	 */
+	protected void orderOpened(long id, long tonce, int base, int counter, long quantity, long price, long time, boolean own) {
+		orderOpened(id, tonce, base, counter, quantity, price, time);
+	}
+
+	@Deprecated
 	protected void orderOpened(long id, long tonce, int base, int counter, long quantity, long price, long time) {
 		orderOpened(id, base, counter, quantity, price, time);
 	}
@@ -743,6 +748,11 @@ public class Coinfloor {
 	 * this callback unless the client is subscribed to the orders feed of an
 	 * order book.
 	 */
+	protected void orderClosed(long id, long tonce, int base, int counter, long quantity, long price, boolean own) {
+		orderClosed(id, tonce, base, counter, quantity, price);
+	}
+
+	@Deprecated
 	protected void orderClosed(long id, long tonce, int base, int counter, long quantity, long price) {
 		orderClosed(id, base, counter, quantity, price);
 	}
@@ -851,7 +861,7 @@ public class Coinfloor {
 						}
 						else if ("OrderOpened".equals(notice)) {
 							Object tonceObj = message.get("tonce");
-							orderOpened(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), ((Number) message.get("time")).longValue());
+							orderOpened(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), ((Number) message.get("time")).longValue(), tonceObj != null || message.containsKey("tonce"));
 						}
 						else if ("OrdersMatched".equals(notice)) {
 							Object bidObj = message.get("bid"), bidTonceObj = message.get("bid_tonce"), askObj = message.get("ask"), askTonceObj = message.get("ask_tonce"), bidRemObj = message.get("bid_rem"), askRemObj = message.get("ask_rem"), bidBaseFeeObj = message.get("bid_base_fee"), bidCounterFeeObj = message.get("bid_counter_fee"), askBaseFeeObj = message.get("ask_base_fee"), askCounterFeeObj = message.get("ask_counter_fee");
@@ -859,7 +869,7 @@ public class Coinfloor {
 						}
 						else if ("OrderClosed".equals(notice)) {
 							Object tonceObj = message.get("tonce");
-							orderClosed(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue());
+							orderClosed(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), tonceObj != null || message.containsKey("tonce"));
 						}
 						else if ("TickerChanged".equals(notice)) {
 							TickerInfo tickerInfo = makeTickerInfo(-1, -1, message);
