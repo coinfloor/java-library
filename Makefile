@@ -1,7 +1,9 @@
 LIBDIR := ..
 OUTDIR := out
 
-JAVAC_OPTS := -Xlint:all $(JAVAC_OPTS)
+JAVAC := javac
+JAVAC_OPTS := -source 1.6 -target 1.6 -Xlint:all $(JAVAC_OPTS)
+JAR := jar
 
 NAME := coinfloor-library
 PACKAGES := uk
@@ -35,6 +37,6 @@ $(OUTDIR) :
 
 $(JARFILE) : $(OUTDIR) $(shell find $(PACKAGES))
 	rm -rf $(addprefix '$(OUTDIR)'/,$(PACKAGES))
-	find $(PACKAGES) -name '*.java' -print0 | xargs -0 -r javac $(JAVAC_OPTS) -d '$(OUTDIR)' -cp '$(CLASSPATH)'
+	find $(PACKAGES) -name '*.java' -print0 | xargs -0 -r $(JAVAC) $(JAVAC_OPTS) -d '$(OUTDIR)' -cp '$(CLASSPATH)'
 	echo 'Class-Path: $(subst $(LIBDIR)/,,$(LIBRARIES))' > '$(OUTDIR)/Manifest'
-	jar -cfme '$(JARFILE)' '$(OUTDIR)/Manifest' '$(MAINCLASS)' -C '$(OUTDIR)' $(PACKAGES)
+	$(JAR) -cfme '$(JARFILE)' '$(OUTDIR)/Manifest' '$(MAINCLASS)' -C '$(OUTDIR)' $(PACKAGES)
