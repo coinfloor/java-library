@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PushbackReader;
 import java.math.BigInteger;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -254,6 +255,9 @@ public class Coinfloor {
 	public static final URI defaultURI = URI.create("wss://api.coinfloor.co.uk/");
 
 	static final long KEEPALIVE_INTERVAL_NS = 45L * 1000 * 1000 * 1000; // 45 seconds
+	static final int INTRA_FRAME_TIMEOUT_MS = 10 * 1000; // 10 seconds
+	static final int CONNECTION_TIMEOUT_MS = 10 * 1000; // 10 seconds
+	static final int HANDSHAKE_TIMEOUT_MS = 10 * 1000; // 10 seconds
 
 	private static final ECDomainParameters secp224k1;
 	private static final Charset ascii = Charset.forName("US-ASCII"), utf8 = Charset.forName("UTF-8");
@@ -287,9 +291,14 @@ public class Coinfloor {
 		if (websocket != null) {
 			throw new IllegalStateException("already connected");
 		}
-		websocket = new WebSocket(uri);
+		websocket = new WebSocket(uri, CONNECTION_TIMEOUT_MS, HANDSHAKE_TIMEOUT_MS);
 		lastActivityTime = System.nanoTime();
-		Map<?, ?> welcome = (Map<?, ?>) JSON.parse(new PushbackReader(new InputStreamReader(websocket.getInputStream(), ascii)));
+		WebSocket.MessageInputStream in = websocket.getInputStream(HANDSHAKE_TIMEOUT_MS, INTRA_FRAME_TIMEOUT_MS);
+		if (in == null) {
+			throw new SocketTimeoutException("timed out while waiting for welcome message");
+		}
+		Map<?, ?> welcome = (Map<?, ?>) JSON.parse(new PushbackReader(new InputStreamReader(in, ascii)));
+		in.close();
 		serverNonce = Base64.decode((String) welcome.get("nonce"));
 		new Thread(getClass().getSimpleName() + " Pump") {
 
@@ -791,7 +800,7 @@ public class Coinfloor {
 		lastActivityTime = System.nanoTime();
 	}
 
-	private <V> V getResult(Future<V> future) throws IOException, CoinfloorException {
+	private static <V> V getResult(Future<V> future) throws IOException, CoinfloorException {
 		try {
 			return future.get();
 		}
@@ -827,7 +836,7 @@ public class Coinfloor {
 				websocket.getOutputStream(0, WebSocket.OP_PING, true).close();
 				timeout = (int) TimeUnit.NANOSECONDS.toMillis(KEEPALIVE_INTERVAL_NS);
 			}
-			WebSocket.MessageInputStream in = websocket.getInputStream(timeout);
+			WebSocket.MessageInputStream in = websocket.getInputStream(timeout, INTRA_FRAME_TIMEOUT_MS);
 			if (in == null) {
 				continue;
 			}

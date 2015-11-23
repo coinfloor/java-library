@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
+import java.net.InetSocketAddress;
 import java.net.ProtocolException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -39,33 +40,11 @@ class WebSocket implements Closeable {
 
 		MessageInputStream(InputStream in) throws IOException {
 			super(in);
-			DataInputStream dis = new DataInputStream(in);
-			flagsAndOpcode = dis.readUnsignedByte();
-			try {
-				long length = dis.readUnsignedByte();
-				boolean mask = (length & 1 << 7) != 0;
-				length &= (1 << 7) - 1;
-				if (length == 126) {
-					length = dis.readUnsignedShort();
-				}
-				else if (length == 127 && (length = dis.readLong()) < 0) {
-					throw new ProtocolException("frame payload length is too large");
-				}
-				this.length = length;
-				if (mask) {
-					dis.readFully(maskingKey = new byte[4]);
-				}
-				else {
-					maskingKey = null;
-				}
-			}
-			catch (SocketTimeoutException e) {
-				throw new IOException(e);
-			}
+			nextFrame(false);
 		}
 
 		public int getFlags() {
-			return flagsAndOpcode >> 4;
+			return flagsAndOpcode & ~((1 << 4) - 1);
 		}
 
 		public int getOpcode() {
@@ -74,7 +53,7 @@ class WebSocket implements Closeable {
 
 		@Override
 		public int read() throws IOException {
-			if (length <= 0 && !nextFrame()) {
+			if (length <= 0 && !nextFrame(true)) {
 				return -1;
 			}
 			int b = in.read();
@@ -87,7 +66,7 @@ class WebSocket implements Closeable {
 
 		@Override
 		public int read(byte[] b, int off, int len) throws IOException {
-			if (length <= 0 && !nextFrame()) {
+			if (length <= 0 && !nextFrame(true)) {
 				return -1;
 			}
 			int n = in.read(b, off, (int) Math.min(len, length));
@@ -114,14 +93,15 @@ class WebSocket implements Closeable {
 				while (length > 0) {
 					length -= in.skip(length);
 				}
-			} while (nextFrame());
+			} while (nextFrame(true));
 		}
 
-		private boolean nextFrame() throws IOException {
+		private boolean nextFrame(boolean continuation) throws IOException {
 			while ((flagsAndOpcode & FLAG_FIN) == 0) {
 				DataInputStream dis = new DataInputStream(in);
-				if (((flagsAndOpcode = dis.readUnsignedByte()) & (1 << 4) - 1) != OP_CONTINUATION) {
-					throw new ProtocolException("continuation frame has wrong opcode");
+				flagsAndOpcode = dis.readUnsignedByte();
+				if (getOpcode() == OP_CONTINUATION != continuation) {
+					throw new ProtocolException("frame has unexpected opcode");
 				}
 				long length = dis.readUnsignedByte();
 				boolean mask = (length & 1 << 7) != 0;
@@ -347,19 +327,26 @@ class WebSocket implements Closeable {
 	private final BufferedOutputStream out;
 
 	public WebSocket(URI uri) throws UnknownHostException, IOException {
-		String scheme = uri.getScheme();
-		Socket socket;
-		int port = uri.getPort();
-		if (SCHEME_WS.equals(scheme)) {
-			socket = new Socket(uri.getHost(), port < 0 ? DEFAULT_PORT_WS : port);
-		}
-		else if (SCHEME_WSS.equals(scheme)) {
-			socket = SSLSocketFactory.getDefault().createSocket(uri.getHost(), port < 0 ? DEFAULT_PORT_WSS : port);
-		}
-		else {
-			throw new IllegalArgumentException("unsupported scheme: " + scheme);
-		}
+		this(uri, 0, 0);
+	}
+
+	public WebSocket(URI uri, int connectTimeout, int receiveTimeout) throws UnknownHostException, IOException {
+		Socket socket = new Socket();
 		try {
+			socket.setSoTimeout(receiveTimeout);
+			String host = uri.getHost();
+			int port = uri.getPort();
+			String scheme = uri.getScheme();
+			if (SCHEME_WS.equals(scheme)) {
+				socket.connect(new InetSocketAddress(host, port < 0 ? DEFAULT_PORT_WS : port), connectTimeout);
+			}
+			else if (SCHEME_WSS.equals(scheme)) {
+				socket.connect(new InetSocketAddress(host, port < 0 ? DEFAULT_PORT_WSS : port), connectTimeout);
+				socket = ((SSLSocketFactory) SSLSocketFactory.getDefault()).createSocket(socket, host, port < 0 ? DEFAULT_PORT_WSS : port, true);
+			}
+			else {
+				throw new IllegalArgumentException("unsupported scheme: " + scheme);
+			}
 			OutputStreamWriter writer = new OutputStreamWriter(out = new BufferedOutputStream(socket.getOutputStream()), "US-ASCII");
 			writer.write("GET ");
 			writer.write(uri.getRawPath());
@@ -369,7 +356,7 @@ class WebSocket implements Closeable {
 				writer.write(query);
 			}
 			writer.write(" HTTP/1.1\r\nHost: ");
-			writer.write(uri.getHost());
+			writer.write(host);
 			if (port >= 0) {
 				writer.write(':');
 				writer.write(String.valueOf(port));
@@ -439,20 +426,28 @@ class WebSocket implements Closeable {
 	}
 
 	public MessageInputStream getInputStream() throws IOException {
-		return new MessageInputStream(in);
+		return getInputStream(0, 0);
 	}
 
-	public MessageInputStream getInputStream(int timeout) throws IOException {
-		socket.setSoTimeout(timeout);
-		try {
-			return new MessageInputStream(in);
+	@Deprecated
+	public MessageInputStream getInputStream(int initialTimeout) throws IOException {
+		return getInputStream(initialTimeout, 0);
+	}
+
+	public MessageInputStream getInputStream(int initialTimeout, int subsequentTimeout) throws IOException {
+		if (initialTimeout != subsequentTimeout) {
+			socket.setSoTimeout(initialTimeout);
+			in.mark(1);
+			try {
+				in.read();
+			}
+			catch (SocketTimeoutException e) {
+				return null;
+			}
+			in.reset();
 		}
-		catch (SocketTimeoutException e) {
-			return null;
-		}
-		finally {
-			socket.setSoTimeout(0);
-		}
+		socket.setSoTimeout(subsequentTimeout);
+		return new MessageInputStream(in);
 	}
 
 	public MessageOutputStream getOutputStream(int flags, int opcode, boolean mask) {
