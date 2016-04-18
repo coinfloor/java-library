@@ -678,6 +678,32 @@ public class Coinfloor {
 	}
 
 	/**
+	 * Cancels the open order that was placed with the specified tonce.
+	 */
+	public final OrderInfo cancelOrderByTonce(long tonce) throws IOException, CoinfloorException {
+		return getResult(cancelOrderByTonceAsync(tonce));
+	}
+
+	/**
+	 * @see #cancelOrderByTonce(long)
+	 */
+	public final Future<OrderInfo> cancelOrderByTonceAsync(long tonce) throws IOException {
+		AsyncResult<OrderInfo> asyncResult = new AsyncResult<OrderInfo>();
+		cancelOrderByTonceAsync(tonce, asyncResult);
+		return asyncResult;
+	}
+
+	/**
+	 * @see #cancelOrderByTonce(long)
+	 */
+	public final void cancelOrderByTonceAsync(long tonce, Callback<? super OrderInfo> callback) throws IOException {
+		HashMap<String, Object> request = new HashMap<String, Object>((3 + 2) / 3 * 4);
+		request.put("method", "CancelOrder");
+		request.put("tonce", tonce);
+		doRequest(request, new OrderInfoInterpreter(callback));
+	}
+
+	/**
 	 * Cancels all open orders belonging to the authenticated user.
 	 */
 	public final Map<Long, OrderInfo> cancelAllOrders() throws IOException, CoinfloorException {
