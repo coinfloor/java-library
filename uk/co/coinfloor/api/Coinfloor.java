@@ -338,12 +338,18 @@ public class Coinfloor {
 		getResult(authenticateAsync(userID, cookie, passphrase));
 	}
 
+	/**
+	 * @see #authenticate(long, String, String)
+	 */
 	public final Future<Void> authenticateAsync(long userID, String cookie, String passphrase) throws IOException {
 		AsyncResult<Void> asyncResult = new AsyncResult<Void>();
 		authenticateAsync(userID, cookie, passphrase, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #authenticate(long, String, String)
+	 */
 	public final void authenticateAsync(long userID, String cookie, String passphrase, Callback<? super Void> callback) throws IOException {
 		byte[] clientNonce = new byte[16];
 		random.nextBytes(clientNonce);
@@ -390,12 +396,18 @@ public class Coinfloor {
 		return getResult(getBalancesAsync());
 	}
 
+	/**
+	 * @see #getBalances()
+	 */
 	public final Future<Map<Integer, Long>> getBalancesAsync() throws IOException {
 		AsyncResult<Map<Integer, Long>> asyncResult = new AsyncResult<Map<Integer, Long>>();
 		getBalancesAsync(asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #getBalances()
+	 */
 	public final void getBalancesAsync(Callback<? super Map<Integer, Long>> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
 		request.put("method", "GetBalances");
@@ -409,12 +421,18 @@ public class Coinfloor {
 		return getResult(getOrdersAsync());
 	}
 
+	/**
+	 * @see #getOrders()
+	 */
 	public final Future<Map<Long, OrderInfo>> getOrdersAsync() throws IOException {
 		AsyncResult<Map<Long, OrderInfo>> asyncResult = new AsyncResult<Map<Long, OrderInfo>>();
 		getOrdersAsync(asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #getOrders()
+	 */
 	public final void getOrdersAsync(Callback<? super Map<Long, OrderInfo>> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
 		request.put("method", "GetOrders");
@@ -431,12 +449,18 @@ public class Coinfloor {
 		return getResult(estimateBaseMarketOrderAsync(base, counter, quantity));
 	}
 
+	/**
+	 * @see #estimateBaseMarketOrder(int, int, long)
+	 */
 	public final Future<MarketOrderEstimate> estimateBaseMarketOrderAsync(int base, int counter, long quantity) throws IOException {
 		AsyncResult<MarketOrderEstimate> asyncResult = new AsyncResult<MarketOrderEstimate>();
 		estimateBaseMarketOrderAsync(base, counter, quantity, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #estimateBaseMarketOrder(int, int, long)
+	 */
 	public final void estimateBaseMarketOrderAsync(int base, int counter, long quantity, Callback<? super MarketOrderEstimate> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "EstimateMarketOrder");
@@ -455,12 +479,18 @@ public class Coinfloor {
 		return getResult(estimateCounterMarketOrderAsync(base, counter, total));
 	}
 
+	/**
+	 * @see #estimateCounterMarketOrder(int, int, long)
+	 */
 	public final Future<MarketOrderEstimate> estimateCounterMarketOrderAsync(int base, int counter, long total) throws IOException {
 		AsyncResult<MarketOrderEstimate> asyncResult = new AsyncResult<MarketOrderEstimate>();
 		estimateCounterMarketOrderAsync(base, counter, total, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #estimateCounterMarketOrder(int, int, long)
+	 */
 	public final void estimateCounterMarketOrderAsync(int base, int counter, long total, Callback<? super MarketOrderEstimate> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "EstimateMarketOrder");
@@ -480,12 +510,18 @@ public class Coinfloor {
 		return getResult(placeLimitOrderAsync(base, counter, quantity, price, tonce, persist));
 	}
 
+	/**
+	 * @see #placeLimitOrder(int, int, long, long, long, boolean)
+	 */
 	public final Future<Long> placeLimitOrderAsync(int base, int counter, long quantity, long price, long tonce, boolean persist) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
 		placeLimitOrderAsync(base, counter, quantity, price, tonce, persist, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #placeLimitOrder(int, int, long, long, long, boolean)
+	 */
 	public final void placeLimitOrderAsync(int base, int counter, long quantity, long price, long tonce, boolean persist, Callback<? super Long> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((8 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
@@ -527,12 +563,18 @@ public class Coinfloor {
 		return getResult(executeBaseMarketOrderAsync(base, counter, quantity, tonce));
 	}
 
+	/**
+	 * @see #executeBaseMarketOrder(int, int, long, long)
+	 */
 	public final Future<Long> executeBaseMarketOrderAsync(int base, int counter, long quantity, long tonce) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
 		executeBaseMarketOrderAsync(base, counter, quantity, tonce, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #executeBaseMarketOrder(int, int, long, long)
+	 */
 	public final void executeBaseMarketOrderAsync(int base, int counter, long quantity, long tonce, Callback<? super Long> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
@@ -570,12 +612,18 @@ public class Coinfloor {
 		return getResult(executeCounterMarketOrderAsync(base, counter, total, tonce));
 	}
 
+	/**
+	 * @see #executeCounterMarketOrder(int, int, long, long)
+	 */
 	public final Future<Long> executeCounterMarketOrderAsync(int base, int counter, long total, long tonce) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
 		executeCounterMarketOrderAsync(base, counter, total, tonce, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #executeCounterMarketOrder(int, int, long, long)
+	 */
 	public final void executeCounterMarketOrderAsync(int base, int counter, long total, long tonce, Callback<? super Long> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "PlaceOrder");
@@ -610,12 +658,18 @@ public class Coinfloor {
 		return getResult(cancelOrderAsync(id));
 	}
 
+	/**
+	 * @see #cancelOrder(long)
+	 */
 	public final Future<OrderInfo> cancelOrderAsync(long id) throws IOException {
 		AsyncResult<OrderInfo> asyncResult = new AsyncResult<OrderInfo>();
 		cancelOrderAsync(id, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #cancelOrder(long)
+	 */
 	public final void cancelOrderAsync(long id, Callback<? super OrderInfo> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((3 + 2) / 3 * 4);
 		request.put("method", "CancelOrder");
@@ -630,12 +684,18 @@ public class Coinfloor {
 		return getResult(cancelAllOrdersAsync());
 	}
 
+	/**
+	 * @see #cancelAllOrders()
+	 */
 	public final Future<Map<Long, OrderInfo>> cancelAllOrdersAsync() throws IOException {
 		AsyncResult<Map<Long, OrderInfo>> asyncResult = new AsyncResult<Map<Long, OrderInfo>>();
 		cancelAllOrdersAsync(asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #cancelAllOrders()
+	 */
 	public final void cancelAllOrdersAsync(Callback<? super Map<Long, OrderInfo>> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((2 + 2) / 3 * 4);
 		request.put("method", "CancelAllOrders");
@@ -650,12 +710,18 @@ public class Coinfloor {
 		return getResult(getTradeVolumeAsync(asset));
 	}
 
+	/**
+	 * @see #getTradeVolume(int)
+	 */
 	public final Future<Long> getTradeVolumeAsync(int asset) throws IOException {
 		AsyncResult<Long> asyncResult = new AsyncResult<Long>();
 		getTradeVolumeAsync(asset, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #getTradeVolume(int)
+	 */
 	public final void getTradeVolumeAsync(int asset, Callback<? super Long> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((3 + 2) / 3 * 4);
 		request.put("method", "GetTradeVolume");
@@ -672,12 +738,18 @@ public class Coinfloor {
 		return watch ? result : null;
 	}
 
+	/**
+	 * @see #watchOrders(int, int, boolean)
+	 */
 	public final Future<Map<Long, OrderInfo>> watchOrdersAsync(int base, int counter, boolean watch) throws IOException {
 		AsyncResult<Map<Long, OrderInfo>> asyncResult = new AsyncResult<Map<Long, OrderInfo>>();
 		watchOrdersAsync(base, counter, watch, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #watchOrders(int, int, boolean)
+	 */
 	public final void watchOrdersAsync(int base, int counter, boolean watch, Callback<? super Map<Long, OrderInfo>> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "WatchOrders");
@@ -696,12 +768,18 @@ public class Coinfloor {
 		return watch ? result : null;
 	}
 
+	/**
+	 * @see #watchTicker(int, int, boolean)
+	 */
 	public final Future<TickerInfo> watchTickerAsync(int base, int counter, boolean watch) throws IOException {
 		AsyncResult<TickerInfo> asyncResult = new AsyncResult<TickerInfo>();
 		watchTickerAsync(base, counter, watch, asyncResult);
 		return asyncResult;
 	}
 
+	/**
+	 * @see #watchTicker(int, int, boolean)
+	 */
 	public final void watchTickerAsync(int base, int counter, boolean watch, Callback<? super TickerInfo> callback) throws IOException {
 		HashMap<String, Object> request = new HashMap<String, Object>((5 + 2) / 3 * 4);
 		request.put("method", "WatchTicker");
