@@ -15,11 +15,11 @@ The library presents three invocation models for each API method:
 
 * **Asynchronous (Callback).** The method call accepts a `Callback` object that will be notified when the result of the method is available. The callback must complete its work quickly (without blocking or waiting). This model is the most difficult to use but offers the most flexibility.
 
-[Example.java]: https://github.com/coinfloor/java-library/blob/master/uk/co/coinfloor/api/Example.java
+[Example.java]: https://github.com/coinfloor/java-library/blob/master/src/test/java/uk/co/coinfloor/api/Example.java
 
 ### Third-party library dependencies
 
-* [Legion of the Bouncy Castle Java cryptography APIs] (http://www.bouncycastle.org/java.html)
+* [Legion of the Bouncy Castle Java cryptography APIs](http://www.bouncycastle.org/java.html)
 
 
 ## API

@@ -1,0 +1,46 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>uk.co.coinfloor</groupId>
+	<artifactId>coinfloor-library</artifactId>
+	<version>1.0-SNAPSHOT</version>
+
+	<name>Coinfloor Java Client Library</name>
+	<description>Provides Java language access to Coinfloor's WebSocket API</description>
+
+	<url>https://www.coinfloor.co.uk/</url>
+	<inceptionYear>2014</inceptionYear>
+
+	<organization>
+		<name>Coinfloor LTD</name>
+		<url>https://www.coinfloor.co.uk/</url>
+	</organization>
+
+	<licenses>
+		<license>
+			<name>Apache License, Version 2.0</name>
+			<url>http://www.apache.org/licenses/LICENSE-2.0</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<scm>
+		<connection>scm:git:https://github.com/coinfloor/java-library.git</connection>
+		<url>https://github.com/coinfloor/java-library</url>
+	</scm>
+
+	<properties>
+		<maven.compiler.source>1.6</maven.compiler.source>
+		<maven.compiler.target>1.6</maven.compiler.target>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk15on</artifactId>
+			<version>1.56</version>
+		</dependency>
+	</dependencies>
+
+</project>
