@@ -4,7 +4,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PushbackReader;
 import java.math.BigInteger;
@@ -21,6 +20,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.bouncycastle.crypto.digests.SHA224Digest;
+import org.bouncycastle.crypto.io.DigestOutputStream;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
 import org.bouncycastle.crypto.signers.ECDSASigner;
@@ -354,19 +354,7 @@ public class Coinfloor {
 		byte[] clientNonce = new byte[16];
 		random.nextBytes(clientNonce);
 		final SHA224Digest sha = new SHA224Digest();
-		DataOutputStream dos = new DataOutputStream(new OutputStream() {
-
-			@Override
-			public void write(int b) {
-				sha.update((byte) b);
-			}
-
-			@Override
-			public void write(byte[] buf, int off, int len) {
-				sha.update(buf, off, len);
-			}
-
-		});
+		DataOutputStream dos = new DataOutputStream(new DigestOutputStream(sha));
 		dos.writeLong(userID);
 		dos.write(passphrase.getBytes(utf8));
 		dos.flush();
