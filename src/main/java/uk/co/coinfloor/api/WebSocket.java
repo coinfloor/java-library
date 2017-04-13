@@ -26,8 +26,6 @@ import java.util.Random;
 
 import javax.net.ssl.SSLSocketFactory;
 
-import org.bouncycastle.util.encoders.Base64;
-
 class WebSocket implements Closeable {
 
 	public static class MessageInputStream extends FilterInputStream {
@@ -364,12 +362,12 @@ class WebSocket implements Closeable {
 			writer.write("\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ");
 			byte[] nonce = new byte[16];
 			secureRandom.nextBytes(nonce);
-			String nonceStr = Base64.toBase64String(nonce);
+			String nonceStr = Base64.encode(nonce);
 			writer.write(nonceStr);
 			writer.write("\r\nSec-WebSocket-Version: 13\r\n\r\n");
 			writer.flush();
 			try {
-				nonceStr = Base64.toBase64String(MessageDigest.getInstance("SHA-1").digest((nonceStr + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes("US-ASCII")));
+				nonceStr = Base64.encode(MessageDigest.getInstance("SHA-1").digest((nonceStr + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").getBytes("US-ASCII")));
 			}
 			catch (NoSuchAlgorithmException e) {
 				throw new RuntimeException(e);

@@ -19,7 +19,7 @@ The library presents three invocation models for each API method:
 
 ### Third-party library dependencies
 
-* [Legion of the Bouncy Castle Java cryptography APIs](http://www.bouncycastle.org/java.html)
+* [Legion of the Bouncy Castle Java cryptography APIs](http://www.bouncycastle.org/java.html) (not needed on Java 8 or newer)
 
 
 ## API

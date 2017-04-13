@@ -1,6 +1,7 @@
 package uk.co.coinfloor.api;
 
-import java.io.DataOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
@@ -9,7 +10,20 @@ import java.io.PushbackReader;
 import java.math.BigInteger;
 import java.net.SocketTimeoutException;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.security.AlgorithmParameters;
+import java.security.GeneralSecurityException;
+import java.security.KeyFactory;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.Provider;
+import java.security.Security;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.spec.ECGenParameterSpec;
+import java.security.spec.ECParameterSpec;
+import java.security.spec.ECPrivateKeySpec;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -18,15 +32,6 @@ import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
-import org.bouncycastle.crypto.digests.SHA224Digest;
-import org.bouncycastle.crypto.io.DigestOutputStream;
-import org.bouncycastle.crypto.params.ECDomainParameters;
-import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
-import org.bouncycastle.crypto.signers.ECDSASigner;
-import org.bouncycastle.jce.ECNamedCurveTable;
-import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
-import org.bouncycastle.util.encoders.Base64;
 
 /**
  * Provides an interface to the Coinfloor trading API.
@@ -259,7 +264,7 @@ public class Coinfloor {
 	static final int CONNECTION_TIMEOUT_MS = 10 * 1000; // 10 seconds
 	static final int HANDSHAKE_TIMEOUT_MS = 10 * 1000; // 10 seconds
 
-	private static final ECDomainParameters secp224k1;
+	private static final ECParameterSpec secp224k1;
 	private static final Charset ascii = Charset.forName("US-ASCII"), utf8 = Charset.forName("UTF-8");
 
 	private final Random random = new Random();
@@ -272,8 +277,30 @@ public class Coinfloor {
 	private long lastActivityTime;
 
 	static {
-		ECNamedCurveParameterSpec spec = ECNamedCurveTable.getParameterSpec("secp224k1");
-		secp224k1 = new ECDomainParameters(spec.getCurve(), spec.getG(), spec.getN(), spec.getH());
+		try {
+			AlgorithmParameters algorithmParameters;
+			try {
+				MessageDigest.getInstance("SHA-224");
+				KeyFactory.getInstance("EC");
+				algorithmParameters = AlgorithmParameters.getInstance("EC");
+				Signature.getInstance("SHA224withECDSA");
+			}
+			catch (NoSuchAlgorithmException e) {
+				Security.addProvider((Provider) Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider").newInstance());
+				algorithmParameters = AlgorithmParameters.getInstance("EC");
+			}
+			algorithmParameters.init(new ECGenParameterSpec("secp224k1"));
+			secp224k1 = algorithmParameters.getParameterSpec(ECParameterSpec.class);
+		}
+		catch (RuntimeException e) {
+			throw e;
+		}
+		catch (ClassNotFoundException e) {
+			throw new RuntimeException("Needed cryptographic algorithm support is missing. Try placing the Bouncy Castle cryptography library in your class path, or upgrade to Java 8.", e);
+		}
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	/**
@@ -353,27 +380,30 @@ public class Coinfloor {
 	public final void authenticateAsync(long userID, String cookie, String passphrase, Callback<? super Void> callback) throws IOException {
 		byte[] clientNonce = new byte[16];
 		random.nextBytes(clientNonce);
-		final SHA224Digest sha = new SHA224Digest();
-		DataOutputStream dos = new DataOutputStream(new DigestOutputStream(sha));
-		dos.writeLong(userID);
-		dos.write(passphrase.getBytes(utf8));
-		dos.flush();
-		byte[] digest = new byte[28];
-		sha.doFinal(digest, 0);
-		ECDSASigner signer = new ECDSASigner();
-		signer.init(true, new ECPrivateKeyParameters(new BigInteger(1, digest), secp224k1));
-		dos.writeLong(userID);
-		dos.write(serverNonce);
-		dos.write(clientNonce);
-		dos.close();
-		sha.doFinal(digest, 0);
-		BigInteger[] signature = signer.generateSignature(digest);
+		byte[][] signatureComponents;
+		try {
+			Signature signature = Signature.getInstance("SHA224withECDSA");
+			MessageDigest sha = MessageDigest.getInstance("SHA-224");
+			ByteBuffer userIDBytes = ByteBuffer.allocate(Long.SIZE / Byte.SIZE);
+			userIDBytes.putLong(userID).flip();
+			sha.update(userIDBytes);
+			sha.update(passphrase.getBytes(utf8));
+			signature.initSign(KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(new BigInteger(1, sha.digest()), secp224k1)));
+			userIDBytes.rewind();
+			signature.update(userIDBytes);
+			signature.update(serverNonce);
+			signature.update(clientNonce);
+			signatureComponents = unpackDERSignature(signature.sign(), 28);
+		}
+		catch (GeneralSecurityException e) {
+			throw new RuntimeException(e);
+		}
 		HashMap<String, Object> request = new HashMap<String, Object>((6 + 2) / 3 * 4);
 		request.put("method", "Authenticate");
 		request.put("user_id", userID);
 		request.put("cookie", cookie);
-		request.put("nonce", Base64.toBase64String(clientNonce));
-		request.put("signature", Arrays.asList(bigIntegerToBase64(signature[0], 28), bigIntegerToBase64(signature[1], 28)));
+		request.put("nonce", Base64.encode(clientNonce));
+		request.put("signature", Arrays.asList(Base64.encode(signatureComponents[0]), Base64.encode(signatureComponents[1])));
 		doRequest(request, new NullInterpreter<Void>(callback));
 	}
 
@@ -1019,22 +1049,39 @@ public class Coinfloor {
 		}
 	}
 
-	private static String bigIntegerToBase64(BigInteger bi, int length) {
-		byte[] bytes = bi.toByteArray();
-		int over = bytes.length - length;
-		if (over > 0) {
-			for (int i = over; i > 0;) {
-				if (bytes[--i] != 0) {
-					throw new IllegalArgumentException("integer is too large");
-				}
+	// see ITU-T Rec. X.690 (07/2002)
+	private static byte[][] unpackDERSignature(byte[] derSignature, int length) throws SignatureException {
+		byte[][] ret = new byte[2][length];
+		try {
+			DataInputStream dis = new DataInputStream(new ByteArrayInputStream(derSignature));
+			int sequenceLength;
+			if (dis.readByte() != 0x30 || // require SEQUENCE tag
+					(sequenceLength = dis.readByte()) < 0) { // require definite length, short form (8.1.3.4)
+				throw new SignatureException("framework returned an unparseable signature");
 			}
-			return Base64.toBase64String(bytes, over, length);
+			for (int i = 0; i < 2; ++i) {
+				int integerLength;
+				if (dis.readByte() != 0x02 || // require INTEGER tag
+						(integerLength = dis.readByte()) < 0) { // require definite length, short form (8.1.3.4)
+					throw new SignatureException("framework returned an unparseable signature");
+				}
+				sequenceLength -= 2 + integerLength;
+				while (integerLength > length) {
+					if (dis.readByte() != 0) { // require bytes in excess of length to be padding
+						throw new IllegalArgumentException("integer is too large");
+					}
+					--integerLength;
+				}
+				dis.readFully(ret[i], length - integerLength, integerLength);
+			}
+			if (sequenceLength != 0 || dis.read() >= 0) { // require end of encoding
+				throw new SignatureException("framework returned an unparseable signature");
+			}
 		}
-		if (over < 0) {
-			byte[] src = bytes;
-			System.arraycopy(src, 0, bytes = new byte[length], -over, src.length);
+		catch (IOException impossible) {
+			throw new RuntimeException(impossible);
 		}
-		return Base64.toBase64String(bytes);
+		return ret;
 	}
 
 }

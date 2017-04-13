@@ -59,6 +59,7 @@ public class Example {
 		System.out.println("coinfloor.getTradeVolume(GBP) => " + tradeVolumeGBPResult.get());
 		System.out.println("coinfloor.watchOrders(XBT, GBP, true) => " + watchOrdersResult.get());
 		System.out.println("coinfloor.watchTicker(XBT, GBP, true) => " + watchTickerResult.get());
+		coinfloor.disconnect();
 	}
 
 }
