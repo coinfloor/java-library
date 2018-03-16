@@ -16,7 +16,6 @@ import java.security.AlgorithmParameters;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.Security;
 import java.security.Signature;
@@ -264,6 +263,7 @@ public class Coinfloor {
 	static final int CONNECTION_TIMEOUT_MS = 10 * 1000; // 10 seconds
 	static final int HANDSHAKE_TIMEOUT_MS = 10 * 1000; // 10 seconds
 
+	private static final Provider ecProvider;
 	private static final ECParameterSpec secp224k1;
 	private static final Charset ascii = Charset.forName("US-ASCII"), utf8 = Charset.forName("UTF-8");
 
@@ -282,24 +282,22 @@ public class Coinfloor {
 			try {
 				MessageDigest.getInstance("SHA-224");
 				KeyFactory.getInstance("EC");
-				algorithmParameters = AlgorithmParameters.getInstance("EC");
+				(algorithmParameters = AlgorithmParameters.getInstance("EC")).init(new ECGenParameterSpec("secp224k"));
 				Signature.getInstance("SHA224withECDSA");
 			}
-			catch (NoSuchAlgorithmException e) {
-				Security.addProvider((Provider) Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider").newInstance());
-				algorithmParameters = AlgorithmParameters.getInstance("EC");
+			catch (GeneralSecurityException e) {
+				Provider provider = (Provider) Class.forName("org.bouncycastle.jce.provider.BouncyCastleProvider").newInstance();
+				Security.addProvider(provider);
+				MessageDigest.getInstance("SHA-224");
+				KeyFactory.getInstance("EC", provider);
+				(algorithmParameters = AlgorithmParameters.getInstance("EC", provider)).init(new ECGenParameterSpec("secp224k1"));
+				Signature.getInstance("SHA224withECDSA", provider);
 			}
-			algorithmParameters.init(new ECGenParameterSpec("secp224k1"));
+			ecProvider = algorithmParameters.getProvider();
 			secp224k1 = algorithmParameters.getParameterSpec(ECParameterSpec.class);
 		}
-		catch (RuntimeException e) {
-			throw e;
-		}
-		catch (ClassNotFoundException e) {
-			throw new RuntimeException("Needed cryptographic algorithm support is missing. Try placing the Bouncy Castle cryptography library in your class path, or upgrade to Java 8.", e);
-		}
 		catch (Exception e) {
-			throw new RuntimeException(e);
+			throw new RuntimeException("Needed cryptographic algorithm support is missing. Try placing the Bouncy Castle cryptography library in your class path, or upgrade to Java 8.", e);
 		}
 	}
 
@@ -382,13 +380,13 @@ public class Coinfloor {
 		random.nextBytes(clientNonce);
 		byte[][] signatureComponents;
 		try {
-			Signature signature = Signature.getInstance("SHA224withECDSA");
+			Signature signature = Signature.getInstance("SHA224withECDSA", ecProvider);
 			MessageDigest sha = MessageDigest.getInstance("SHA-224");
 			ByteBuffer userIDBytes = ByteBuffer.allocate(Long.SIZE / Byte.SIZE);
 			userIDBytes.putLong(userID).flip();
 			sha.update(userIDBytes);
 			sha.update(passphrase.getBytes(utf8));
-			signature.initSign(KeyFactory.getInstance("EC").generatePrivate(new ECPrivateKeySpec(new BigInteger(1, sha.digest()), secp224k1)));
+			signature.initSign(KeyFactory.getInstance("EC", ecProvider).generatePrivate(new ECPrivateKeySpec(new BigInteger(1, sha.digest()), secp224k1)));
 			userIDBytes.rewind();
 			signature.update(userIDBytes);
 			signature.update(serverNonce);
