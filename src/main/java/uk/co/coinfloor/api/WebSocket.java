@@ -129,49 +129,55 @@ class WebSocket implements Closeable {
 
 	public static class MessageOutputStream extends BufferedOutputStream {
 
-		private final int flagsAndOpcode;
-		private final Random maskingRandom;
+		static final int PAYLOAD_OFFSET = 4;
 
-		private boolean continuation;
+		final byte flagsAndOpcode;
 
-		MessageOutputStream(OutputStream out, int flags, int opcode, Random maskingRandom) {
-			super(out);
-			if ((flags & ~((1 << 4) - 1 << 4)) != 0) {
+		boolean continuation;
+
+		MessageOutputStream(OutputStream out, int flags, int opcode) {
+			super(out, 8192);
+			if ((flags & ~((1 << 3) - 1 << 4)) != 0) {
 				throw new IllegalArgumentException("flags");
 			}
 			if (opcode == 0 || (opcode & ~((1 << 4) - 1)) != 0) {
 				throw new IllegalArgumentException("opcode");
 			}
-			flagsAndOpcode = flags << 4 | opcode;
-			this.maskingRandom = maskingRandom;
+			flagsAndOpcode = (byte) (flags | opcode);
+			count = PAYLOAD_OFFSET;
 		}
 
 		@Override
 		public void write(int b) throws IOException {
+			byte[] buf = this.buf;
 			if (buf == null) {
 				throw new IOException("closed");
 			}
 			if (count >= buf.length) {
-				drain();
+				writeBufferedFragment(false, count - PAYLOAD_OFFSET);
 			}
 			buf[count++] = (byte) b;
 		}
 
 		@Override
 		public void write(byte[] b, int off, int len) throws IOException {
+			byte[] buf = this.buf;
 			if (buf == null) {
 				throw new IOException("closed");
 			}
-			if (len >= buf.length) {
-				drain();
-				writeFragment(false, b, off, len);
-				return;
+			int maxBufferedPayloadSize = buf.length - PAYLOAD_OFFSET;
+			if (len > maxBufferedPayloadSize) {
+				writeUnbufferedFragment(b, off, len);
 			}
-			if (len > buf.length - count) {
-				drain();
+			else {
+				for (int n; len > (n = buf.length - count); off += n, len -= n) {
+					System.arraycopy(b, off, buf, count, n);
+					count += n;
+					writeBufferedFragment(false, maxBufferedPayloadSize);
+				}
+				System.arraycopy(b, off, buf, count, len);
+				count += len;
 			}
-			System.arraycopy(b, off, buf, count, len);
-			count += len;
 		}
 
 		@Override
@@ -182,23 +188,62 @@ class WebSocket implements Closeable {
 		@Override
 		public void close() throws IOException {
 			if (out != null) {
-				writeFragment(true, buf, 0, count);
-				count = 0;
+				writeBufferedFragment(true, count - PAYLOAD_OFFSET);
 				out.flush();
 				out = null;
 				buf = null;
 			}
 		}
 
-		private void drain() throws IOException {
-			if (count > 0) {
-				writeFragment(false, buf, 0, count);
-				count = 0;
-			}
+		private void writeBufferedFragment(boolean fin, int payloadSize) throws IOException {
+			byte[] buf = this.buf;
+			int headerOffset = putHeader(buf, PAYLOAD_OFFSET, fin, payloadSize);
+			out.write(buf, headerOffset, count - headerOffset);
+			count = PAYLOAD_OFFSET;
 		}
 
-		private void writeFragment(boolean fin, byte[] b, int off, int len) throws IOException {
-			OutputStream out = this.out;
+		private void writeUnbufferedFragment(byte[] b, int off, int len) throws IOException {
+			int payloadSize = count - PAYLOAD_OFFSET;
+			if (payloadSize + len <= 0xFFFF) {
+				writeBufferedFragment(false, payloadSize + len);
+			}
+			else {
+				int headerSize = len < 126 ? 2 : len <= 0xFFFF ? 4 : 10;
+				if (count + headerSize > buf.length) {
+					writeBufferedFragment(false, payloadSize);
+				}
+				else if (payloadSize > 0) {
+					putHeader(buf, count += headerSize, false, len);
+					writeBufferedFragment(false, payloadSize);
+					out.write(b, off, len);
+					return;
+				}
+				putHeader(buf, headerSize, false, len);
+				out.write(buf, 0, headerSize);
+			}
+			out.write(b, off, len);
+		}
+
+		private int putHeader(byte[] header, int off, boolean fin, int payloadSize) {
+			if (payloadSize < 126) {
+				header[--off] = (byte) payloadSize;
+			}
+			else if (payloadSize <= 0xFFFF) {
+				header[off -= 3] = 126;
+				header[off + 1] = (byte) (payloadSize >> 8);
+				header[off + 2] = (byte) payloadSize;
+			}
+			else {
+				header[off -= 9] = 127;
+				header[off + 1] = 0;
+				header[off + 2] = 0;
+				header[off + 3] = 0;
+				header[off + 4] = 0;
+				header[off + 5] = (byte) (payloadSize >> 24);
+				header[off + 6] = (byte) (payloadSize >> 16);
+				header[off + 7] = (byte) (payloadSize >> 8);
+				header[off + 8] = (byte) payloadSize;
+			}
 			int flagsAndOpcode = this.flagsAndOpcode;
 			if (continuation) {
 				flagsAndOpcode &= ~((1 << 4) - 1);
@@ -206,43 +251,113 @@ class WebSocket implements Closeable {
 			else {
 				continuation = true;
 			}
-			out.write(fin ? flagsAndOpcode | FLAG_FIN : flagsAndOpcode & ~FLAG_FIN);
-			if (len < 126) {
-				out.write(maskingRandom == null ? len : len | 1 << 7);
+			header[--off] = (byte) (fin ? flagsAndOpcode | FLAG_FIN : flagsAndOpcode);
+			return off;
+		}
+
+	}
+
+	private static class MaskedMessageOutputStream extends MessageOutputStream {
+
+		static final int MASK_OFFSET = MessageOutputStream.PAYLOAD_OFFSET, PAYLOAD_OFFSET = MASK_OFFSET + 4;
+
+		private final Random maskingRandom;
+
+		MaskedMessageOutputStream(OutputStream out, int flags, int opcode, Random maskingRandom) {
+			super(out, flags, opcode);
+			putInt(buf, MASK_OFFSET, (this.maskingRandom = maskingRandom).nextInt());
+			count = PAYLOAD_OFFSET;
+		}
+
+		@Override
+		public void write(int b) throws IOException {
+			byte[] buf = this.buf;
+			if (buf == null) {
+				throw new IOException("closed");
 			}
-			else if (len <= 0xFFFF) {
-				out.write(maskingRandom == null ? 126 : 126 | 1 << 7);
-				out.write(len >> 8);
-				out.write(len);
+			if (count >= buf.length) {
+				writeBufferedFragment(false, count - PAYLOAD_OFFSET);
+			}
+			buf[count] = (byte) (b ^ buf[MASK_OFFSET + (count & 3)]);
+			++count;
+		}
+
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException {
+			byte[] buf = this.buf;
+			if (buf == null) {
+				throw new IOException("closed");
+			}
+			int maxBufferedPayloadSize = buf.length - PAYLOAD_OFFSET;
+			for (int n; len > (n = buf.length - count); off += n, len -= n) {
+				buffer(b, off, n);
+				writeBufferedFragment(false, maxBufferedPayloadSize);
+			}
+			buffer(b, off, len);
+		}
+
+		@Override
+		public void close() throws IOException {
+			if (out != null) {
+				writeBufferedFragment(true, count - PAYLOAD_OFFSET);
+				out.flush();
+				out = null;
+				buf = null;
+			}
+		}
+
+		private void buffer(byte[] in, int off, int len) {
+			int count = this.count;
+			for (byte[] buf = this.buf; len > 0; ++count, ++off, --len) {
+				buf[count] = (byte) (in[off] ^ buf[MASK_OFFSET + (count & 3)]);
+			}
+			this.count = count;
+		}
+
+		private void writeBufferedFragment(boolean fin, int payloadSize) throws IOException {
+			byte[] buf = this.buf;
+			int headerOffset = putHeader(buf, MASK_OFFSET, fin, payloadSize);
+			out.write(buf, headerOffset, count - headerOffset);
+			putInt(buf, MASK_OFFSET, maskingRandom.nextInt());
+			count = PAYLOAD_OFFSET;
+		}
+
+		private int putHeader(byte[] header, int off, boolean fin, int payloadSize) {
+			if (payloadSize < 126) {
+				header[--off] = (byte) (payloadSize | 1 << 7);
+			}
+			else if (payloadSize <= 0xFFFF) {
+				header[off -= 3] = (byte) (126 | 1 << 7);
+				header[off + 1] = (byte) (payloadSize >> 8);
+				header[off + 2] = (byte) payloadSize;
 			}
 			else {
-				out.write(maskingRandom == null ? 127 : 127 | 1 << 7);
-				out.write(0);
-				out.write(0);
-				out.write(0);
-				out.write(0);
-				out.write(len >> 24);
-				out.write(len >> 16);
-				out.write(len >> 8);
-				out.write(len);
+				header[off -= 9] = (byte) (127 | 1 << 7);
+				header[off + 1] = 0;
+				header[off + 2] = 0;
+				header[off + 3] = 0;
+				header[off + 4] = 0;
+				header[off + 5] = (byte) (payloadSize >> 24);
+				header[off + 6] = (byte) (payloadSize >> 16);
+				header[off + 7] = (byte) (payloadSize >> 8);
+				header[off + 8] = (byte) payloadSize;
 			}
-			if (maskingRandom == null) {
-				if (len > 0) {
-					out.write(b, off, len);
-				}
+			int flagsAndOpcode = this.flagsAndOpcode;
+			if (continuation) {
+				flagsAndOpcode &= ~((1 << 4) - 1);
 			}
 			else {
-				byte[] maskingKey = new byte[4];
-				maskingRandom.nextBytes(maskingKey);
-				out.write(maskingKey, 0, 4);
-				if (len > 0) {
-					byte[] maskedBytes = new byte[len];
-					for (int i = 0; i < len; ++i) {
-						maskedBytes[i] = (byte) (b[off + i] ^ maskingKey[i & 3]);
-					}
-					out.write(maskedBytes, 0, len);
-				}
+				continuation = true;
 			}
+			header[--off] = (byte) (fin ? flagsAndOpcode | FLAG_FIN : flagsAndOpcode);
+			return off;
+		}
+
+		private static void putInt(byte[] buf, int off, int v) {
+			buf[off] = (byte) (v >> 24);
+			buf[off + 1] = (byte) (v >> 16);
+			buf[off + 2] = (byte) (v >> 8);
+			buf[off + 3] = (byte) v;
 		}
 
 	}
@@ -322,7 +437,7 @@ class WebSocket implements Closeable {
 	private final SecureRandom secureRandom = new SecureRandom();
 	private final Socket socket;
 	private final BufferedInputStream in;
-	private final BufferedOutputStream out;
+	private final OutputStream out;
 
 	public WebSocket(URI uri) throws UnknownHostException, IOException {
 		this(uri, 0, 0);
@@ -331,6 +446,7 @@ class WebSocket implements Closeable {
 	public WebSocket(URI uri, int connectTimeout, int receiveTimeout) throws UnknownHostException, IOException {
 		Socket socket = new Socket();
 		try {
+			socket.setTcpNoDelay(true);
 			socket.setSoTimeout(receiveTimeout);
 			String host = uri.getHost();
 			int port = uri.getPort();
@@ -345,7 +461,7 @@ class WebSocket implements Closeable {
 			else {
 				throw new IllegalArgumentException("unsupported scheme: " + scheme);
 			}
-			OutputStreamWriter writer = new OutputStreamWriter(out = new BufferedOutputStream(socket.getOutputStream()), "US-ASCII");
+			OutputStreamWriter writer = new OutputStreamWriter(new BufferedOutputStream(out = socket.getOutputStream()), "US-ASCII");
 			writer.write("GET ");
 			writer.write(uri.getRawPath());
 			String query = uri.getRawQuery();
@@ -449,7 +565,7 @@ class WebSocket implements Closeable {
 	}
 
 	public MessageOutputStream getOutputStream(int flags, int opcode, boolean mask) {
-		return new MessageOutputStream(out, flags, opcode, mask ? secureRandom : null);
+		return mask ? new MaskedMessageOutputStream(out, flags, opcode, secureRandom) : new MessageOutputStream(out, flags, opcode);
 	}
 
 	@Override
