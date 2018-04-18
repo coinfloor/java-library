@@ -282,7 +282,7 @@ public class Coinfloor {
 			try {
 				MessageDigest.getInstance("SHA-224");
 				KeyFactory.getInstance("EC");
-				(algorithmParameters = AlgorithmParameters.getInstance("EC")).init(new ECGenParameterSpec("secp224k"));
+				(algorithmParameters = AlgorithmParameters.getInstance("EC")).init(new ECGenParameterSpec("secp224k1"));
 				Signature.getInstance("SHA224withECDSA");
 			}
 			catch (GeneralSecurityException e) {
