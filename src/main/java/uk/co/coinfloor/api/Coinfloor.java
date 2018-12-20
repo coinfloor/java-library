@@ -993,9 +993,9 @@ public class Coinfloor {
 							orderOpened(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), ((Number) message.get("time")).longValue(), tonceObj != null || message.containsKey("tonce"));
 						}
 						else if ("OrdersMatched".equals(notice)) {
-							Object bidObj = message.get("bid"), bidTonceObj = message.get("bid_tonce"), askObj = message.get("ask"), askTonceObj = message.get("ask_tonce"), bidRemObj = message.get("bid_rem"), askRemObj = message.get("ask_rem"), bidBaseFeeObj = message.get("bid_base_fee"), bidCounterFeeObj = message.get("bid_counter_fee"), askBaseFeeObj = message.get("ask_base_fee"), askCounterFeeObj = message.get("ask_counter_fee");
-							ordersMatched(bidObj == null ? -1 : ((Number) bidObj).longValue(), bidTonceObj == null ? 0 : ((Number) bidTonceObj).longValue(), askObj == null ? -1 : ((Number) askObj).longValue(), askTonceObj == null ? 0 : ((Number) askTonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), ((Number) message.get("total")).longValue(), bidRemObj == null ? -1 : ((Number) bidRemObj).longValue(), askRemObj == null ? -1 : ((Number) askRemObj).longValue(), ((Number) message.get("time")).longValue(), bidBaseFeeObj == null ? -1 : ((Number) bidBaseFeeObj).longValue(), bidCounterFeeObj == null ? -1 : ((Number) bidCounterFeeObj).longValue(), askBaseFeeObj == null ? -1 : ((Number) askBaseFeeObj).longValue(), askCounterFeeObj == null ? -1 : ((Number) askCounterFeeObj).longValue());
-						}
+                                                    Object bidObj = message.get("bid"), askObj = message.get("ask"), bidRemObj = message.get("bid_rem"), askRemObj = message.get("ask_rem"), bidBaseFeeObj = message.get("bid_base_fee"), bidCounterFeeObj = message.get("bid_counter_fee"), askBaseFeeObj = message.get("ask_base_fee"), askCounterFeeObj = message.get("ask_counter_fee");
+                                                    ordersMatched(bidObj == null ? -1 : ((Number) bidObj).longValue(), getBidTonce(message), askObj == null ? -1 : ((Number) askObj).longValue(), getAskTonce(message), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), ((Number) message.get("total")).longValue(), bidRemObj == null ? -1 : ((Number) bidRemObj).longValue(), askRemObj == null ? -1 : ((Number) askRemObj).longValue(), ((Number) message.get("time")).longValue(), bidBaseFeeObj == null ? -1 : ((Number) bidBaseFeeObj).longValue(), bidCounterFeeObj == null ? -1 : ((Number) bidCounterFeeObj).longValue(), askBaseFeeObj == null ? -1 : ((Number) askBaseFeeObj).longValue(), askCounterFeeObj == null ? -1 : ((Number) askCounterFeeObj).longValue());
+                                                }
 						else if ("OrderClosed".equals(notice)) {
 							Object tonceObj = message.get("tonce");
 							orderClosed(((Number) message.get("id")).longValue(), tonceObj == null ? 0 : ((Number) tonceObj).longValue(), ((Number) message.get("base")).intValue(), ((Number) message.get("counter")).intValue(), ((Number) message.get("quantity")).longValue(), ((Number) message.get("price")).longValue(), tonceObj != null || message.containsKey("tonce"));
@@ -1005,7 +1005,7 @@ public class Coinfloor {
 							tickerChanged(tickerInfo.base, tickerInfo.counter, tickerInfo.last, tickerInfo.bid, tickerInfo.ask, tickerInfo.low, tickerInfo.high, tickerInfo.volume);
 						}
 					}
-					break;
+                                    break;
 				}
 				case WebSocket.OP_PING: {
 					WebSocket.MessageOutputStream out = websocket.getOutputStream(0, WebSocket.OP_PONG, true);
@@ -1082,4 +1082,26 @@ public class Coinfloor {
 		return ret;
 	}
 
+        private long getBidTonce(Map<?, ?> message) {
+            long bidTonce;
+            if (!message.containsKey("bid_tonce")) {
+                bidTonce = -1;
+            } else {
+                Object tonceObj = message.get("bid_tonce");
+                bidTonce = (tonceObj == null) ? 0 : ((Number) tonceObj).longValue();
+            }
+            return bidTonce;
+        }
+
+        private long getAskTonce(Map<?, ?> message) {
+            long askTonce;
+            if (!message.containsKey("ask_tonce")) {
+                askTonce = -1;
+            } else {
+                Object tonceObj = message.get("ask_tonce");
+                askTonce = (tonceObj == null) ? 0 : ((Number) tonceObj).longValue();
+            }
+            return askTonce;
+        }
+        
 }
